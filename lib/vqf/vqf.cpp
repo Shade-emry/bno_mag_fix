@@ -1,4 +1,4 @@
-#include "VQF.h"
+#include "vqf.h"
 
 VQFParams::VQFParams() :
     tauAcc(0.02f), tauMag(9.0f),  // Much more conservative mag correction, slightly slower acc
