@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: 2021 Daniel Laidig <laidig@control.tu-berlin.de>
+//
+// SPDX-License-Identifier: MIT
+// Shade Emry - Added changes for optimization for 8266 esp32
+
 #ifndef VQF_H
 #define VQF_H
 
