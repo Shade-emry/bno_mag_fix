@@ -26,15 +26,27 @@
 #include "GlobalVars.h"
 #include "utils.h"
 
-// Function to calculate the norm of a vector
+/*
+ * Calculates the Euclidean norm (magnitude) of a vector
+ * - Uses fixed-point multiplication for accuracy
+ * - Converts back to floating point for sqrt calculation
+ */
 int32_t norm(const int32_t* vector, int size) {
     int32_t sum = 0;
     for (int i = 0; i < size; i++) {
-        sum += FX_MUL(vector[i], vector[i]);
+        sum += FX_MUL(vector[i], vector[i]);  // Fixed-point multiplication for accuracy
     }
-    return (int32_t)sqrtf(FX_TO_F(sum));
+    return (int32_t)sqrtf(FX_TO_F(sum));  // Convert back to floating point for sqrt
 }
 
+/*
+ * Initializes the BNO080 sensor and configures its settings
+ * - Sets up I2C communication
+ * - Configures sensor fusion modes
+ * - Enables required sensor features
+ * - Initializes magnetometer if enabled
+ * - Sets up calibration parameters
+ */
 void BNO080Sensor::motionSetup() {
 #ifdef DEBUG_SENSOR
 	imu.enableDebugging(Serial);
@@ -193,6 +205,14 @@ void BNO080Sensor::motionSetup() {
 	m_dataCounter.reset();
 }
 
+/*
+ * Main sensor data processing loop
+ * - Reads quaternion data for orientation
+ * - Handles magnetometer calibration
+ * - Processes linear acceleration
+ * - Monitors sensor stability
+ * - Updates calibration status
+ */
 void BNO080Sensor::motionLoop() {
     if (imu.dataAvailable()) {
         lastData = millis();
@@ -323,12 +343,24 @@ void BNO080Sensor::motionLoop() {
     updateMagneticCalibration();
 }
 
+/*
+ * Returns current sensor operational status
+ * - SENSOR_ERROR: If reset occurred
+ * - SENSOR_OK: If working normally
+ * - SENSOR_OFFLINE: If not working
+ */
 SensorStatus BNO080Sensor::getSensorState() {
     return lastReset > 0 ? SensorStatus::SENSOR_ERROR
          : isWorking()   ? SensorStatus::SENSOR_OK
                          : SensorStatus::SENSOR_OFFLINE;
 }
 
+/*
+ * Sends processed sensor data to the network
+ * - Sends quaternion orientation data
+ * - Sends linear acceleration data
+ * - Only sends when fusion data is updated
+ */
 void BNO080Sensor::sendData() {
     if (!m_fusion.isUpdated()) {
         return;
@@ -349,6 +381,12 @@ void BNO080Sensor::sendData() {
     m_fusion.clearUpdated();
 }
 
+/*
+ * Sets sensor configuration flags
+ * - Handles magnetometer enable/disable
+ * - Updates sensor configuration
+ * - Triggers sensor reinitialization when needed
+ */
 void BNO080Sensor::setFlag(uint16_t flagId, bool state) {
     if (flagId == FLAG_SENSOR_BNO0XX_MAG_ENABLED) {
         m_Config.magEnabled = state;
@@ -365,6 +403,13 @@ void BNO080Sensor::setFlag(uint16_t flagId, bool state) {
     }
 }
 
+/*
+ * Initiates sensor calibration sequence
+ * - Provides detailed calibration instructions
+ * - Configures magnetometer for calibration
+ * - Monitors calibration progress
+ * - Handles calibration data storage
+ */
 void BNO080Sensor::startCalibration(int calibrationType) {
     if (calibrationType == 2) {  // Magnetometer calibration type
         m_Logger.info("Starting magnetometer calibration sequence...");
@@ -401,6 +446,12 @@ void BNO080Sensor::startCalibration(int calibrationType) {
     }
 }
 
+/*
+ * Initializes magnetometer calibration
+ * - Sets up calibration parameters
+ * - Enables magnetometer readings
+ * - Prepares calibration structures
+ */
 void BNO080Sensor::initMagneticCalibration() {
     if (isMagEnabled()) {
         // Request current calibration status
@@ -419,15 +470,33 @@ void BNO080Sensor::initMagneticCalibration() {
     }
 }
 
+/*
+ * Updates magnetic calibration state
+ * - Processes new magnetic data
+ * - Updates calibration parameters
+ */
 void BNO080Sensor::updateMagneticCalibration() {
     processMagneticData();
 }
 
+/*
+ * Updates magnetic calibration state with new input data
+ * - Processes new magnetic data
+ * - Updates calibration parameters
+ */
 void BNO080Sensor::updateMagneticCalibration(const MFX_MagCal_input_t& magInput) {
     m_MagCalInput = magInput;
     processMagneticData();
 }
 
+/*
+ * Processes magnetic sensor data
+ * - Handles magnetic interference detection
+ * - Applies hard iron compensation
+ * - Manages temperature compensation
+ * - Updates calibration quality
+ * - Implements disturbance recovery
+ */
 void BNO080Sensor::processMagneticData() {
     updateTemperatureCompensation();
 
@@ -587,6 +656,12 @@ void BNO080Sensor::processMagneticData() {
     processGyroData();
 }
 
+/*
+ * Updates hard iron compensation values
+ * - Calculates bias corrections
+ * - Updates calibration quality
+ * - Manages sample collection
+ */
 void BNO080Sensor::updateHardIronCompensation() {
     /*
     static const uint16_t SAMPLES_FOR_CALIBRATION = 25; // Reduced samples for faster response
@@ -617,6 +692,13 @@ void BNO080Sensor::updateHardIronCompensation() {
     */
 }
 
+/*
+ * Processes gyroscope data
+ * - Handles heading calculations
+ * - Applies temperature compensation
+ * - Manages drift correction
+ * - Integrates with magnetometer data
+ */
 void BNO080Sensor::processGyroData() {
     unsigned long currentTime = millis();
     float deltaTime = (currentTime - lastGyroTime) / 1000.0f;
@@ -653,6 +735,12 @@ void BNO080Sensor::processGyroData() {
     }
 }
 
+/*
+ * Updates temperature compensation
+ * - Monitors temperature changes
+ * - Applies dynamic compensation
+ * - Adjusts sensor readings based on temperature
+ */
 void BNO080Sensor::updateTemperatureCompensation() {
     // Get temperature from gyro data packet
     float currentTemp = imu.getRawGyroX() * 0.01f;
