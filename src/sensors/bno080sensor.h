@@ -24,76 +24,105 @@
 #ifndef SENSORS_BNO080SENSOR_H
 #define SENSORS_BNO080SENSOR_H
 
+// External dependencies
 #include <BNO080.h>
 #include "SensorFusionRestDetect.h"
 #include "sensor.h"
 #include "magnetic_calibration.h"
 
+// Flag to enable/disable magnetometer functionality
 #define FLAG_SENSOR_BNO0XX_MAG_ENABLED 1
 
+/**
+ * @brief Main sensor class for BNO080 IMU
+ * Handles sensor initialization, data processing, and magnetic calibration
+ */
 class BNO080Sensor : public Sensor {
 public:
-	static constexpr auto TypeID = SensorTypeID::BNO080;
-	static constexpr uint8_t Address = 0x4a;
-	static constexpr float GyrFreq = 400;  // 400 Hz
-	static constexpr float AccFreq = 400;  // 400 Hz
-	static constexpr float MagFreq = 100;  // 100 Hz
+    // Sensor configuration constants
+    static constexpr auto TypeID = SensorTypeID::BNO080;
+    static constexpr uint8_t Address = 0x4a;  // Default I2C address
+    static constexpr float GyrFreq = 400;     // Gyroscope frequency in Hz
+    static constexpr float AccFreq = 400;     // Accelerometer frequency in Hz
+    static constexpr float MagFreq = 100;     // Magnetometer frequency in Hz
 
-	static constexpr float GyrTs = 1.0f / GyrFreq;
-	static constexpr float AccTs = 1.0f / AccFreq;
-	static constexpr float MagTs = 1.0f / MagFreq;
+    // Time periods for each sensor (in seconds)
+    static constexpr float GyrTs = 1.0f / GyrFreq;
+    static constexpr float AccTs = 1.0f / AccFreq;
+    static constexpr float MagTs = 1.0f / MagFreq;
 
-	BNO080Sensor(
-		uint8_t id,
-		uint8_t i2cAddress,
-		float rotation,
-		SlimeVR::SensorInterface* sensorInterface,
-		PinInterface* intPin,
-		int
-	)
-		: Sensor(
-			"BNO080Sensor",
-			SensorTypeID::BNO080,
-			id,
-			i2cAddress,
-			rotation,
-			sensorInterface
-		)
-		, m_IntPin(intPin)
-		, m_fusion(GyrTs, AccTs, MagTs) {
-			// Initialize magnetic calibration structures
-			initMagneticCalibration();
-		};
-	~BNO080Sensor(){};
-	void motionSetup() override final;
-	void postSetup() override { lastData = millis(); }
+    /**
+     * @brief Constructor for BNO080 sensor
+     * @param id Sensor identifier
+     * @param i2cAddress I2C address of the sensor
+     * @param rotation Mounting rotation compensation
+     * @param sensorInterface Interface for sensor communication
+     * @param intPin Interrupt pin interface
+     */
+    BNO080Sensor(
+        uint8_t id,
+        uint8_t i2cAddress,
+        float rotation,
+        SlimeVR::SensorInterface* sensorInterface,
+        PinInterface* intPin,
+        int
+    )
+        : Sensor(
+            "BNO080Sensor",
+            SensorTypeID::BNO080,
+            id,
+            i2cAddress,
+            rotation,
+            sensorInterface
+        )
+        , m_IntPin(intPin)
+        , m_fusion(GyrTs, AccTs, MagTs) {
+            // Initialize magnetic calibration structures
+            initMagneticCalibration();
+        };
+    ~BNO080Sensor(){};
 
-	void motionLoop() override final;
-	void sendData() override final;
-	void startCalibration(int calibrationType) override final;
-	SensorStatus getSensorState() override final;
-	void setFlag(uint16_t flagId, bool state) override final;
+    // Core sensor interface methods
+    void motionSetup() override final;        // Initialize sensor
+    void postSetup() override { lastData = millis(); }  // Post-initialization setup
+    void motionLoop() override final;         // Main sensor processing loop
+    void sendData() override final;           // Transmit sensor data
+    void startCalibration(int calibrationType) override final;  // Begin calibration
+    SensorStatus getSensorState() override final;  // Get current sensor status
+    void setFlag(uint16_t flagId, bool state) override final;  // Set sensor flags
 
-	// Magnetic calibration methods
-	void updateMagneticCalibration();
-	void updateMagneticCalibration(const MFX_MagCal_input_t& magInput);
-	MFX_MagCal_quality_t getMagneticCalibrationQuality() const { return m_MagCalOutput.quality; }
-	
-	// Convert fixed-point bias values to float array when requested
-	void getHardIronBias(float* bias) const {
+    // Magnetic calibration interface
+    /**
+     * @brief Update magnetic calibration with current readings
+     */
+    void updateMagneticCalibration();
+    
+    /**
+     * @brief Update magnetic calibration with specific input
+     * @param magInput Magnetic calibration input data
+     */
+    void updateMagneticCalibration(const MFX_MagCal_input_t& magInput);
+    
+    /**
+     * @brief Get current magnetic calibration quality
+     * @return Calibration quality status
+     */
+    MFX_MagCal_quality_t getMagneticCalibrationQuality() const { return m_MagCalOutput.quality; }
+    
+    /**
+     * @brief Convert and retrieve hard iron bias values
+     * @param bias Output array for bias values
+     */
+    void getHardIronBias(float* bias) const {
         for(int i = 0; i < MFX_NUM_AXES; i++) {
             bias[i] = FX_TO_F(m_MagCalOutput.hi_bias[i]);
         }
     }
 
 protected:
-	void initMagneticCalibration();
-    void updateTemperatureCompensation();
-    void processGyroData();
-    void processMagneticData();
-    void updateHardIronCompensation();
-
-    // forwarding constructor
+    /**
+     * @brief Alternative constructor for derived classes
+     */
     BNO080Sensor(
         const char* sensorName,
         SensorTypeID imuId,
@@ -110,94 +139,109 @@ protected:
             initMagneticCalibration();
         };
 
+    // Protected utility methods
+    void initMagneticCalibration();           // Initialize magnetic calibration
+    void updateTemperatureCompensation();      // Handle temperature compensation
+    void processGyroData();                    // Process gyroscope readings
+    void processMagneticData();                // Process magnetometer readings
+    void updateHardIronCompensation();         // Update hard iron compensation
+
 private:
-	BNO080 imu{};
-	PinInterface* m_IntPin;
-	SlimeVR::Sensors::SensorFusionRestDetect m_fusion;
+    BNO080 imu{};                             // IMU instance
+    PinInterface* m_IntPin;                    // Interrupt pin
+    SlimeVR::Sensors::SensorFusionRestDetect m_fusion;  // Fusion algorithm
 
-	uint8_t tap;
-	unsigned long lastData = 0;
-	uint8_t lastReset = 0;
-	BNO080Error lastError{};
-	SlimeVR::Configuration::BNO0XXSensorConfig m_Config = {};
+    // Sensor state tracking
+    uint8_t tap;                              // Tap detection state
+    unsigned long lastData = 0;                // Timestamp of last data
+    uint8_t lastReset = 0;                    // Last reset counter
+    BNO080Error lastError{};                  // Last error state
+    SlimeVR::Configuration::BNO0XXSensorConfig m_Config = {};  // Sensor config
 
-	// Magnetometer specific members
-	Quat magQuaternion{};
-	uint8_t magCalibrationAccuracy = 0;
-	float magneticAccuracyEstimate = 999;
-	bool newMagData = false;
-	bool configured = false;
+    // Magnetometer state
+    Quat magQuaternion{};                     // Magnetic orientation
+    uint8_t magCalibrationAccuracy = 0;       // Calibration accuracy
+    float magneticAccuracyEstimate = 999;     // Accuracy estimate
+    bool newMagData = false;                  // New data flag
+    bool configured = false;                  // Configuration state
 
-	// New magnetic calibration members
-	MFX_knobs_t m_MagKnobs{};
-	MFX_input_t m_MagInput{};
-	MFX_output_t m_MagOutput{};
-	MFX_MagCal_input_t m_MagCalInput{};
-	MFX_MagCal_output_t m_MagCalOutput{};
+    // Magnetic calibration state
+    MFX_knobs_t m_MagKnobs{};                // Calibration parameters
+    MFX_input_t m_MagInput{};                // Input data
+    MFX_output_t m_MagOutput{};              // Output data
+    MFX_MagCal_input_t m_MagCalInput{};      // Calibration input
+    MFX_MagCal_output_t m_MagCalOutput{};    // Calibration output
 
-	// Magnetic field history (reduced size for ESP8266)
-    static const uint8_t HISTORY_SIZE = 6;  // Reduced from 10 to save memory
-    int32_t magHistory[6][3];  // Use literal instead of HISTORY_SIZE for array
-    uint8_t historyIndex = 0;
-    int32_t lastValidMag[3] = {0, 0, 0};
-    bool inDisturbance = false;
+    // Magnetic field history tracking
+    static const uint8_t HISTORY_SIZE = 6;    // History buffer size
+    int32_t magHistory[6][3];                // Magnetic field history
+    uint8_t historyIndex = 0;                // Current history index
+    int32_t lastValidMag[3] = {0, 0, 0};    // Last valid reading
+    bool inDisturbance = false;              // Disturbance flag
 
-    // Gyro backup for heading
-    float lastGyroHeading = 0.0f;
-    unsigned long lastGyroTime = 0;
-    bool usingGyroHeading = false;
+    // Gyro backup tracking
+    float lastGyroHeading = 0.0f;            // Last gyro heading
+    unsigned long lastGyroTime = 0;          // Last gyro timestamp
+    bool usingGyroHeading = false;           // Gyro backup state
 
     // Temperature compensation
-    float lastTemp = 25.0f;
-    bool tempCalibrated = false;
-    static constexpr float TEMP_COEFF = -0.1f;  // Fixed coefficient to save memory
-
+    float lastTemp = 25.0f;                  // Last temperature
+    bool tempCalibrated = false;             // Calibration state
+    static constexpr float TEMP_COEFF = -0.1f;  // Temperature coefficient
 };
 
+/**
+ * @brief BNO085 sensor variant
+ * Extends BNO080 with specific configurations for BNO085
+ */
 class BNO085Sensor : public BNO080Sensor {
 public:
-	static constexpr auto TypeID = SensorTypeID::BNO085;
-	BNO085Sensor(
-		uint8_t id,
-		uint8_t i2cAddress,
-		float rotation,
-		SlimeVR::SensorInterface* sensorInterface,
-		PinInterface* intPin,
-		int extraParam
-	)
-		: BNO080Sensor(
-			"BNO085Sensor",
-			SensorTypeID::BNO085,
-			id,
-			i2cAddress,
-			rotation,
-			sensorInterface,
-			intPin,
-			extraParam
-		){};
+    static constexpr auto TypeID = SensorTypeID::BNO085;
+    BNO085Sensor(
+        uint8_t id,
+        uint8_t i2cAddress,
+        float rotation,
+        SlimeVR::SensorInterface* sensorInterface,
+        PinInterface* intPin,
+        int extraParam
+    )
+        : BNO080Sensor(
+            "BNO085Sensor",
+            SensorTypeID::BNO085,
+            id,
+            i2cAddress,
+            rotation,
+            sensorInterface,
+            intPin,
+            extraParam
+        ){};
 };
 
+/**
+ * @brief BNO086 sensor variant
+ * Extends BNO080 with specific configurations for BNO086
+ */
 class BNO086Sensor : public BNO080Sensor {
 public:
-	static constexpr auto TypeID = SensorTypeID::BNO086;
-	BNO086Sensor(
-		uint8_t id,
-		uint8_t i2cAddress,
-		float rotation,
-		SlimeVR::SensorInterface* sensorInterface,
-		PinInterface* intPin,
-		int extraParam
-	)
-		: BNO080Sensor(
-			"BNO086Sensor",
-			SensorTypeID::BNO086,
-			id,
-			i2cAddress,
-			rotation,
-			sensorInterface,
-			intPin,
-			extraParam
-		){};
+    static constexpr auto TypeID = SensorTypeID::BNO086;
+    BNO086Sensor(
+        uint8_t id,
+        uint8_t i2cAddress,
+        float rotation,
+        SlimeVR::SensorInterface* sensorInterface,
+        PinInterface* intPin,
+        int extraParam
+    )
+        : BNO080Sensor(
+            "BNO086Sensor",
+            SensorTypeID::BNO086,
+            id,
+            i2cAddress,
+            rotation,
+            sensorInterface,
+            intPin,
+            extraParam
+        ){};
 };
 
 #endif
