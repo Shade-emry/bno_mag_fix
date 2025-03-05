@@ -6,19 +6,26 @@
 #ifndef VQF_H
 #define VQF_H
 
+// Required standard libraries
 #include <cmath>
 #include <algorithm>
 
-#define VQF_SINGLE_PRECISION
-#define VQF_NO_MOTION_BIAS_ESTIMATION
-#define VQF_VR_MODE
+// Optimization flags for embedded systems
+#define VQF_SINGLE_PRECISION           // Use float instead of double
+#define VQF_NO_MOTION_BIAS_ESTIMATION  // Disable expensive bias estimation
+#define VQF_VR_MODE                    // Enable VR-specific optimizations
 
+// Mathematical constants
 constexpr float VQF_PI = 3.14159265358979323846f;
 constexpr float VQF_SQRT2 = 1.41421356237309504880f;
 constexpr float VQF_EPS = 1.1920929e-07f;
 
 typedef float vqf_real_t;
 
+/**
+ * @brief Configuration parameters for the VQF algorithm
+ * Controls filter behavior and performance characteristics
+ */
 struct VQFParams {
     VQFParams();
     
@@ -55,19 +62,23 @@ struct VQFParams {
     vqf_real_t magLpB[3]{0.0f, 0.0f, 0.0f};  // Magnetometer low-pass filter coefficients
 };
 
+/**
+ * @brief Runtime state of the VQF algorithm
+ * Contains all variables needed during filter operation
+ */
 struct VQFState {
-    // Orientation state
+    // Quaternion representation of current orientation
     vqf_real_t gyrQuat[4];
     vqf_real_t accQuat[4];
     vqf_real_t delta;
     
-    // System state
+    // Current system status flags and metrics
     bool restDetected;
     bool magDistDetected;
     bool poseStable;
     vqf_real_t motionEnergy;
 
-    // Filter states
+    // Filter processing state variables
     vqf_real_t lastAccLp[3];
     vqf_real_t accLpState[3*2];
     vqf_real_t lastAccCorrAngularRate;
@@ -77,7 +88,7 @@ struct VQFState {
     vqf_real_t bias[3];
     vqf_real_t biasP;
     
-    // Rest detection
+    // Variables for motion/rest detection
     vqf_real_t restLastSquaredDeviations[2];
     vqf_real_t restT;
     vqf_real_t restLastGyrLp[3];
@@ -85,7 +96,7 @@ struct VQFState {
     vqf_real_t restLastAccLp[3];
     vqf_real_t restAccLpState[3*2];
     
-    // Magnetometer state
+    // Magnetometer calibration and tracking
     vqf_real_t magRefNorm;
     vqf_real_t magRefDip;
     vqf_real_t magUndisturbedT;
@@ -96,17 +107,22 @@ struct VQFState {
     vqf_real_t magNormDip[2];
     vqf_real_t magNormDipLpState[2*2];
     
-    // VR tracking
+    // VR-specific tracking state
     vqf_real_t vrCalibrationTimer;
 };
 
+/**
+ * @brief Versatile Quaternion-based Filter (VQF) implementation
+ * Provides sensor fusion for IMU/MARG orientation estimation optimized for VR
+ */
 class VQF {
 public:
-    // Default sampling times in seconds
+    // Sampling rate constants
     static constexpr float DEFAULT_GYRO_SAMPLING_TIME = 1.0f/400.0f;  // 400 Hz
     static constexpr float DEFAULT_ACC_SAMPLING_TIME = 1.0f/100.0f;   // 100 Hz
     static constexpr float DEFAULT_MAG_SAMPLING_TIME = 1.0f/100.0f;   // 100 Hz
 
+    // Constructors and core methods
     VQF(vqf_real_t gyrTs = DEFAULT_GYRO_SAMPLING_TIME, vqf_real_t accTs = -1.0f, vqf_real_t magTs = -1.0f);
     VQF(const VQFParams& params, vqf_real_t gyrTs = DEFAULT_GYRO_SAMPLING_TIME, vqf_real_t accTs = -1.0f, vqf_real_t magTs = -1.0f);
 
@@ -114,17 +130,23 @@ public:
     void updateAcc(const vqf_real_t acc[3]);
     void updateMag(const vqf_real_t mag[3]);
 
-    // VR extensions
+    /**
+     * @brief VR-specific extensions for improved tracking
+     */
     void vrInitSequence(float duration = 5.0f);
     bool getPoseStability() const;
     void getPredictedPose(vqf_real_t out[4], float predictionTime = 0.03f) const;
 
-    // Configuration
+    /**
+     * @brief Configuration interface
+     */
     void setTauAcc(vqf_real_t tauAcc);
     void setTauMag(vqf_real_t tauMag);
     void resetState();
 
-    // State access
+    /**
+     * @brief State query interface
+     */
     void getQuat6D(vqf_real_t out[4]) const;
     void getQuat9D(vqf_real_t out[4]) const;
     vqf_real_t getDelta() const;
@@ -133,9 +155,13 @@ public:
     bool getMagDistDetected() const;
 
 private:
-    VQFParams params;
-    VQFState state;
+    VQFParams params;    // Filter parameters
+    VQFState state;      // Current state
 
+    /**
+     * @brief Filter coefficients and timing parameters
+     * Used for various filtering operations
+     */
     struct Coefficients {
         vqf_real_t gyrTs, accTs, magTs;
         vqf_real_t accLpB[3], accLpA[2];
@@ -147,13 +173,26 @@ private:
         vqf_real_t magNormDipLpB[3], magNormDipLpA[2];
     } coeffs;
 
-    void setup();
-    void handleVrMotionAnomaly();
+    // Utility methods
+    void setup();                    // Initialize filter state
+    void handleVrMotionAnomaly();    // Handle VR-specific motion issues
+    
+    /**
+     * @brief Digital filtering operations
+     */
     void filterVec(const vqf_real_t x[], size_t N, vqf_real_t tau, vqf_real_t Ts,
                    const vqf_real_t b[3], const vqf_real_t a[2], vqf_real_t state[], vqf_real_t out[]);
+    
+    /**
+     * @brief Quaternion math operations
+     */
     static void quatMultiply(const vqf_real_t q1[4], const vqf_real_t q2[4], vqf_real_t out[4]);
     static void quatRotate(const vqf_real_t q[4], const vqf_real_t v[3], vqf_real_t out[3]);
     static void quatApplyDelta(vqf_real_t q[4], vqf_real_t delta, vqf_real_t out[4]);
+    
+    /**
+     * @brief Vector operations and filter utilities
+     */
     static vqf_real_t norm(const vqf_real_t vec[], size_t N);
     static void normalize(vqf_real_t vec[], size_t N);
     static vqf_real_t gainFromTau(vqf_real_t tau, vqf_real_t Ts);
