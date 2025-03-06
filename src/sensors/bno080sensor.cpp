@@ -216,6 +216,7 @@ void BNO080Sensor::motionSetup() {
 void BNO080Sensor::motionLoop() {
     if (imu.dataAvailable()) {
         lastData = millis();
+        hadData = true;
         
         Quat nRotation;  // Local quaternion variable
         
@@ -300,8 +301,9 @@ void BNO080Sensor::motionLoop() {
                     updateHardIronCompensation();
                 }
             }
-            
-            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
+
+            setFusedRotation(nRotation); // Set fused rotation data to add the rotation offset
+//            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
             
         } else {
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
@@ -311,14 +313,15 @@ void BNO080Sensor::motionLoop() {
                 imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
             }
             
-            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
+            setFusedRotation(nRotation); // Set fused rotation data to add the rotation offset
+//            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
         }
 
         // Get linear acceleration data
         uint8_t acc;
         Vector3 nAccel;
         imu.getLinAccel(nAccel.x, nAccel.y, nAccel.z, acc);
-        networkConnection.sendSensorAcceleration(sensorId, nAccel);
+//        networkConnection.sendSensorAcceleration(sensorId, nAccel);
 
         // Update magnetic calibration if enabled
         if (isMagEnabled()) {
@@ -361,10 +364,11 @@ SensorStatus BNO080Sensor::getSensorState() {
  * - Sends linear acceleration data
  * - Only sends when fusion data is updated
  */
+/*
 void BNO080Sensor::sendData() {
-    if (!m_fusion.isUpdated()) {
-        return;
-    }
+//    if (!m_fusion.isUpdated()) {
+//        return;
+//    }
 
     Quat quaternion = m_fusion.getQuaternionQuat();
     Vector3 acceleration = m_fusion.getLinearAccVec();
@@ -379,6 +383,37 @@ void BNO080Sensor::sendData() {
     networkConnection.sendSensorAcceleration(sensorId, acceleration);
 
     m_fusion.clearUpdated();
+}
+*/
+void BNO080Sensor::sendData() {
+	if (newFusedRotation) {
+		newFusedRotation = false;
+		networkConnection.sendRotationData(
+			sensorId,
+			&fusedRotation,
+			DATA_TYPE_NORMAL,
+			calibrationAccuracy
+		);
+
+#ifdef DEBUG_SENSOR
+		m_Logger.trace("Quaternion: %f, %f, %f, %f", UNPACK_QUATERNION(fusedRotation));
+#endif
+
+#if SEND_ACCELERATION
+		if (newAcceleration) {
+			newAcceleration = false;
+			networkConnection.sendSensorAcceleration(
+				this->sensorId,
+				this->acceleration
+			);
+		}
+#endif
+	}
+
+	if (tap != 0) {
+		networkConnection.sendSensorTap(sensorId, tap);
+		tap = 0;
+	}
 }
 
 /*
