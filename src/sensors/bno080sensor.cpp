@@ -321,6 +321,7 @@ void BNO080Sensor::motionLoop() {
         uint8_t acc;
         Vector3 nAccel;
         imu.getLinAccel(nAccel.x, nAccel.y, nAccel.z, acc);
+        setAcceleration(nAccel);
 //        networkConnection.sendSensorAcceleration(sensorId, nAccel);
 
         // Update magnetic calibration if enabled
