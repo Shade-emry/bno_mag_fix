@@ -111,8 +111,10 @@ void BNO080Sensor::motionSetup() {
 		if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
 			&& BNO_USE_ARVR_STABILIZATION) {
 			imu.enableARVRStabilizedRotationVector(10);
+            m_Logger.info("Using AR/VR Stabilized Rotation Vector");
 		} else {
 			imu.enableRotationVector(10);
+            m_Logger.info("Using Rotation Vector");
 		}
 		
 		// Request initial calibration status
@@ -139,8 +141,10 @@ void BNO080Sensor::motionSetup() {
 		if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
 			&& BNO_USE_ARVR_STABILIZATION) {
 			imu.enableARVRStabilizedGameRotationVector(10);
+            m_Logger.info("Using AR/VR Stabilized Game Rotation Vector");
 		} else {
 			imu.enableGameRotationVector(10);
+            m_Logger.info("Using Game Rotation Vector");
 		}
 	}
 
