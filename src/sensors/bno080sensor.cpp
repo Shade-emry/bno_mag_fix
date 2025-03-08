@@ -218,6 +218,7 @@ void BNO080Sensor::motionLoop() {
         lastData = millis();
         
         Quat nRotation;  // Local quaternion variable
+        Quat nRotationwithOffset;  // Local quaternion variable with offset
         
         if (isMagEnabled()) {
             static uint32_t lastMagStatusCheck = 0;
@@ -300,8 +301,11 @@ void BNO080Sensor::motionLoop() {
                     updateHardIronCompensation();
                 }
             }
-            
-            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
+            // Apply sensor offset from setFusedRotation: fusedRotation = r * sensorOffset;
+            // This applys the only math that is different from SlimeVR's original code, that would apply to the quaternion
+            // that is send to the Server compared to Unis_fixes when flashed with IMU_BNO080 and #define OPTIMIZE_UPDATES false
+            nRotationwithOffset = nRotation * sensorOffset;
+            networkConnection.sendRotationData(sensorId, &nRotationwithOffset, DATA_TYPE_NORMAL, calibrationAccuracy);
             
         } else {
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
@@ -310,14 +314,19 @@ void BNO080Sensor::motionLoop() {
             } else {
                 imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
             }
-            
-            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
+            // Apply sensor offset from setFusedRotation: fusedRotation = r * sensorOffset;
+            // This applys the only math that is different from SlimeVR's original code, that would apply to the quaternion
+            // that is send to the Server compared to Unis_fixes when flashed with IMU_BNO080 and #define OPTIMIZE_UPDATES false
+            nRotationwithOffset = nRotation * sensorOffset;
+            networkConnection.sendRotationData(sensorId, &nRotationwithOffset, DATA_TYPE_NORMAL, calibrationAccuracy);
         }
 
         // Get linear acceleration data
         uint8_t acc;
         Vector3 nAccel;
         imu.getLinAccel(nAccel.x, nAccel.y, nAccel.z, acc);
+        // The offset is currently not applied to the acceleration data.
+        // There is a open issue for changing this.
         networkConnection.sendSensorAcceleration(sensorId, nAccel);
 
         // Update magnetic calibration if enabled
@@ -362,10 +371,10 @@ SensorStatus BNO080Sensor::getSensorState() {
  * - Only sends when fusion data is updated
  */
 void BNO080Sensor::sendData() {
-    if (!m_fusion.isUpdated()) {
+    if (!m_fusion.isUpdated()) { // always false as SensorFusion::updateGyro() is not called
         return;
     }
-
+    // as the above if statement is always false, the following code is never executed
     Quat quaternion = m_fusion.getQuaternionQuat();
     Vector3 acceleration = m_fusion.getLinearAccVec();
 
