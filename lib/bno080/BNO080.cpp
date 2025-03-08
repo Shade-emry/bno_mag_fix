@@ -342,6 +342,7 @@ uint16_t BNO080::parseInputReport(void)
 	}
 	else if (shtpData[5] == SENSOR_REPORTID_LINEAR_ACCELERATION)
 	{
+		hasNewLinAccel_ = true; 
 		accelLinAccuracy = status;
 		rawLinAccelX = data1;
 		rawLinAccelY = data2;
@@ -589,6 +590,10 @@ bool BNO080::hasNewAccel() {
 	return hasNewAccel_;
 }
 
+bool BNO080::hasNewLinAccel() {
+	return hasNewLinAccel_;
+}
+
 //Return the rotation vector quaternion I
 float BNO080::getQuatI()
 {
@@ -678,6 +683,7 @@ void BNO080::getLinAccel(float &x, float &y, float &z, uint8_t &accuracy)
 	y = qToFloat(rawLinAccelY, linear_accelerometer_Q1);
 	z = qToFloat(rawLinAccelZ, linear_accelerometer_Q1);
 	accuracy = accelLinAccuracy;
+	hasNewLinAccel_ = false; 
 }
 
 //Return the acceleration component

@@ -188,6 +188,14 @@ private:
     float lastTemp = 25.0f;                  // Last temperature
     bool tempCalibrated = false;             // Calibration state
     static constexpr float TEMP_COEFF = -0.1f;  // Temperature coefficient
+
+    // Accelerometer Store
+    boolean accelHadData = false;            // Accelerometer data flag
+    uint8_t accelStatus;                     // Accelerometer status
+    Vector3 accelData;
+
+    Quat nRotation;                          // Normalized rotation
+    bool nRotationHadData = false;           // Normalized rotation data flag
 };
 
 /**

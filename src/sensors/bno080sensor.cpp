@@ -217,9 +217,7 @@ void BNO080Sensor::motionLoop() {
     if (imu.dataAvailable()) {
         lastData = millis();
         hadData = true;
-        
-        Quat nRotation;  // Local quaternion variable
-        
+                
         if (isMagEnabled()) {
             static uint32_t lastMagStatusCheck = 0;
             uint32_t currentTime = millis();
@@ -267,10 +265,12 @@ void BNO080Sensor::motionLoop() {
             }
             
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
-                && BNO_USE_ARVR_STABILIZATION) {
+                && BNO_USE_ARVR_STABILIZATION && imu.hasNewQuat()) {
                 imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+                nRotationHadData = true;
             } else {
                 imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+                nRotationHadData = true;
             }
             
             // Monitor magnetometer calibration status
@@ -302,28 +302,38 @@ void BNO080Sensor::motionLoop() {
                 }
             }
 
-            setFusedRotation(nRotation); // Set fused rotation data to add the rotation offset
-//            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
             
         } else {
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
-                && BNO_USE_ARVR_STABILIZATION) {
+                && BNO_USE_ARVR_STABILIZATION && imu.hasNewGameQuat()) {
                 imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
+                nRotationHadData = true;
             } else {
                 imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
+                nRotationHadData = true;
             }
             
-            setFusedRotation(nRotation); // Set fused rotation data to add the rotation offset
+        
 //            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
         }
 
         // Get linear acceleration data
-        uint8_t acc;
-        Vector3 nAccel;
-        imu.getLinAccel(nAccel.x, nAccel.y, nAccel.z, acc);
-        setAcceleration(nAccel);
-//        networkConnection.sendSensorAcceleration(sensorId, nAccel);
 
+        if (imu.hasNewLinAccel() ) {
+            imu.getLinAccel(accelData.x, accelData.y, accelData.z, accelStatus);
+            accelHadData = true;
+        }
+
+        if (nRotationHadData && accelHadData) {
+            setAcceleration(accelData);
+            setFusedRotation(nRotation);
+            accelHadData = false;
+            nRotationHadData = false;
+        }
+        
+        
+
+/*
         // Update magnetic calibration if enabled
         if (isMagEnabled()) {
             MFX_MagCal_input_t magInput;
@@ -333,6 +343,7 @@ void BNO080Sensor::motionLoop() {
             magInput.timestamp = millis();
             updateMagneticCalibration(magInput);
         }
+*/
     }
 
     if (lastData + 1000 < millis()) {
@@ -344,7 +355,7 @@ void BNO080Sensor::motionLoop() {
         markRestCalibrationComplete();
     }
 
-    updateMagneticCalibration();
+//    updateMagneticCalibration();
 }
 
 /*
