@@ -154,6 +154,9 @@ public:
     bool getRestDetected() const;
     bool getMagDistDetected() const;
 
+    // Applies a small rotation to a quaternion for prediction
+    void quatApplyDelta(const vqf_real_t quat[4], vqf_real_t delta, vqf_real_t out[4]);
+
 private:
     VQFParams params;    // Filter parameters
     VQFState state;      // Current state
