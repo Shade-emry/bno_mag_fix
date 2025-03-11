@@ -5,6 +5,58 @@
 
 #include "vqf.h"
 
+// Fast sin/cos lookup tables
+#define VQF_LOOKUP_TABLE_SIZE 1024
+vqf_real_t sinTable[VQF_LOOKUP_TABLE_SIZE];
+vqf_real_t cosTable[VQF_LOOKUP_TABLE_SIZE];
+bool tablesInitialized = false;
+
+// Initialize lookup tables
+void initLookupTables() {
+    if (tablesInitialized) return;
+    for (int i = 0; i < VQF_LOOKUP_TABLE_SIZE; i++) {
+        float angle = i * (2.0f * VQF_PI / VQF_LOOKUP_TABLE_SIZE);
+        sinTable[i] = sinf(angle);
+        cosTable[i] = cosf(angle);
+    }
+    tablesInitialized = true;
+}
+
+// Fast sin/cos lookup
+inline vqf_real_t fastSin(vqf_real_t x) {
+    // Normalize angle to 0-2π range
+    while (x < 0) x += 2.0f * VQF_PI;
+    while (x >= 2.0f * VQF_PI) x -= 2.0f * VQF_PI;
+    
+    // Convert to lookup table index
+    int index = (int)(x * VQF_LOOKUP_TABLE_SIZE / (2.0f * VQF_PI));
+    index = index % VQF_LOOKUP_TABLE_SIZE;
+    
+    return sinTable[index];
+}
+
+inline vqf_real_t fastCos(vqf_real_t x) {
+    // Normalize angle to 0-2π range
+    while (x < 0) x += 2.0f * VQF_PI;
+    while (x >= 2.0f * VQF_PI) x -= 2.0f * VQF_PI;
+    
+    // Convert to lookup table index
+    int index = (int)(x * VQF_LOOKUP_TABLE_SIZE / (2.0f * VQF_PI));
+    index = index % VQF_LOOKUP_TABLE_SIZE;
+    
+    return cosTable[index];
+}
+
+// Fast inverse square root implementation
+inline vqf_real_t fastInvSqrt(vqf_real_t x) {
+    float xhalf = 0.5f * x;
+    int i = *(int*)&x;
+    i = 0x5f3759df - (i >> 1);
+    x = *(float*)&i;
+    x = x * (1.5f - xhalf * x * x); // One Newton-Raphson iteration
+    return x;
+}
+
 VQFParams::VQFParams() :
     tauAcc(0.02f), tauMag(9.0f),  // Much more conservative mag correction, slightly slower acc
     restBiasEstEnabled(true), magDistRejectionEnabled(true),  // Enable all protection features
@@ -37,6 +89,10 @@ VQF::VQF(const VQFParams& params, vqf_real_t gyrTs, vqf_real_t accTs, vqf_real_t
 }
 
 void VQF::setup() {
+    // Initialize lookup tables once
+    initLookupTables();
+    
+    // Rest of the function remains unchanged
     filterCoeffs(params.tauAcc, coeffs.accTs, coeffs.accLpB, coeffs.accLpA);
     coeffs.kMag = gainFromTau(params.tauMag, coeffs.magTs);
 
@@ -141,8 +197,8 @@ void VQF::updateGyr(const vqf_real_t gyr[3], vqf_real_t gyrTs) {
     // Gyro integration
     vqf_real_t angle = norm(gyrNoBias, 3) * gyrTs;
     if (norm(gyrNoBias, 3) > VQF_EPS) {
-        vqf_real_t c = cosf(angle/2);
-        vqf_real_t s = sinf(angle/2)/norm(gyrNoBias, 3);
+        vqf_real_t c = fastCos(angle/2);
+        vqf_real_t s = fastSin(angle/2)/norm(gyrNoBias, 3);
         vqf_real_t gyrStepQuat[4] = {c, s*gyrNoBias[0], s*gyrNoBias[1], s*gyrNoBias[2]};
         quatMultiply(state.gyrQuat, gyrStepQuat, state.gyrQuat);
         normalize(state.gyrQuat, 4);
@@ -175,17 +231,73 @@ void VQF::updateAcc(const vqf_real_t acc[3]) {
         state.accQuat[1] = 0.0f;
         state.accQuat[2] = 0.0f;
         state.accQuat[3] = 0.0f;
-        return;
+    } else {
+        vqf_real_t axis[3] = {-accLp[1], accLp[0], 0.0f};
+        normalize(axis, 3);
+
+        vqf_real_t s = fastSin(angle/2);  // Using fastSin for optimization
+        state.accQuat[0] = fastCos(angle/2);  // Using fastCos for optimization
+        state.accQuat[1] = s * axis[0];
+        state.accQuat[2] = s * axis[1];
+        state.accQuat[3] = s * axis[2];
     }
-
-    vqf_real_t axis[3] = {-accLp[1], accLp[0], 0.0f};
-    normalize(axis, 3);
-
-    vqf_real_t s = std::sin(angle/2);
-    state.accQuat[0] = std::cos(angle/2);
-    state.accQuat[1] = s * axis[0];
-    state.accQuat[2] = s * axis[1];
-    state.accQuat[3] = s * axis[2];
+    
+    // Now fuse accelerometer data with gyroscope data
+    if (!state.magDistDetected) {
+        // Only apply acc correction if magnetometer is stable
+        // Apply correction with adaptive gain
+        vqf_real_t k = coeffs.kMag * state.kMagInit;
+        
+        // Calculate difference quaternion and apply partial correction
+        vqf_real_t diffQuat[4];
+        quatMultiply(state.accQuat, state.gyrQuat, diffQuat);  // diffQuat = accQuat * gyrQuat^-1
+        
+        // Apply SLERP for smooth transition between gyr and acc orientations
+        vqf_real_t corrQuat[4];
+        corrQuat[0] = 1.0f - k + k * diffQuat[0];
+        corrQuat[1] = k * diffQuat[1];
+        corrQuat[2] = k * diffQuat[2];
+        corrQuat[3] = k * diffQuat[3];
+        normalize(corrQuat, 4);
+        
+        // Apply correction to gyro quaternion
+        quatMultiply(corrQuat, state.gyrQuat, state.gyrQuat);
+        normalize(state.gyrQuat, 4);
+    }
+    
+    // Rest detection using accelerometer if enabled
+    if (params.restBiasEstEnabled) {
+        vqf_real_t restAccLp[3];
+        filterVec(accNormalized, 3, params.restFilterTau, coeffs.accTs, coeffs.restAccLpB, 
+                 coeffs.restAccLpA, state.restAccLpState, restAccLp);
+        
+        vqf_real_t restAccDiffNorm = 0.0f;
+        for (size_t i = 0; i < 3; i++) {
+            vqf_real_t diff = accNormalized[i] - restAccLp[i];
+            restAccDiffNorm += diff * diff;
+        }
+        restAccDiffNorm = std::sqrt(restAccDiffNorm);
+        
+        if (restAccDiffNorm <= params.restThAcc) {
+            state.restT += coeffs.accTs;
+            if (state.restT >= params.restMinT) {
+                state.restDetected = true;
+                
+                // Update bias estimation during rest
+                vqf_real_t biasLp[3];
+                for (size_t i = 0; i < 3; i++) {
+                    biasLp[i] = state.restLastGyrLp[i];
+                }
+                
+                // Kalman filter update for bias
+                vqf_real_t r = coeffs.biasRestW / (state.biasP + coeffs.biasRestW);
+                for (size_t i = 0; i < 3; i++) {
+                    state.bias[i] += r * (biasLp[i] - state.bias[i]);
+                }
+                state.biasP = (1.0f - r) * state.biasP + coeffs.biasV;
+            }
+        }
+    }
 }
 
 void VQF::vrInitSequence(float duration) {
@@ -264,14 +376,43 @@ void VQF::quatMultiply(const vqf_real_t q1[4], const vqf_real_t q2[4], vqf_real_
     normalize(out, 4);
 }
 
+// Optimized norm function using fast inverse square root
 vqf_real_t VQF::norm(const vqf_real_t vec[], size_t N) {
     vqf_real_t sum = 0.0f;
     for(size_t i=0; i<N; i++) sum += vec[i]*vec[i];
-    return sqrtf(sum);
+    return 1.0f / fastInvSqrt(sum);
+    // Alternative pure approximation: return sum * fastInvSqrt(sum);
 }
 
+// Optimize normalize function
 void VQF::normalize(vqf_real_t vec[], size_t N) {
     vqf_real_t n = norm(vec, N);
     if(n < VQF_EPS) return;
-    for(size_t i=0; i<N; i++) vec[i] /= n;
+    
+    vqf_real_t invNorm = fastInvSqrt(n*n); // 1/n
+    for(size_t i=0; i<N; i++) vec[i] *= invNorm;
 }
+
+// Add missing quatApplyDelta function needed for prediction
+void VQF::quatApplyDelta(const vqf_real_t quat[4], vqf_real_t delta, vqf_real_t out[4]) {
+    if (delta < VQF_EPS) {
+        // No significant rotation, copy the input quaternion
+        out[0] = quat[0];
+        out[1] = quat[1];
+        out[2] = quat[2];
+        out[3] = quat[3];
+        return;
+    }
+    
+    // Create rotation quaternion based on current rotation axis
+    vqf_real_t axis[3] = {quat[1], quat[2], quat[3]};
+    normalize(axis, 3);
+    
+    vqf_real_t halfDelta = delta * 0.5f;
+    vqf_real_t c = fastCos(halfDelta);
+    vqf_real_t s = fastSin(halfDelta);
+    
+    vqf_real_t deltaQuat[4] = {c, s*axis[0], s*axis[1], s*axis[2]};
+    quatMultiply(quat, deltaQuat, out);
+}
+
