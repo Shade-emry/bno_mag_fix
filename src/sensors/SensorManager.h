@@ -30,13 +30,23 @@
 
 #include "EmptySensor.h"
 #include "ErroneousSensor.h"
-#include "globals.h"
+#include "../globals.h"
 #include "logging/Logger.h"
 #include "sensor.h"
 #include "sensorinterface/DirectPinInterface.h"
 #include "sensorinterface/I2CPCAInterface.h"
 #include "sensorinterface/I2CWireSensorInterface.h"
 #include "sensorinterface/MCP23X17PinInterface.h"
+// Only define default values if not already defined elsewhere
+#ifndef PRIMARY_IMU_ADDRESS_ONE
+#define PRIMARY_IMU_ADDRESS_ONE std::nullopt
+#endif
+
+#ifndef SECONDARY_IMU_ADDRESS_TWO
+#define SECONDARY_IMU_ADDRESS_TWO std::nullopt
+#endif
+
+
 
 namespace SlimeVR {
 namespace Sensors {
@@ -47,14 +57,6 @@ public:
 	void setup();
 	void postSetup();
 
-// Only define default values if not already defined elsewhere
-#ifndef PRIMARY_IMU_ADDRESS_ONE
-#define PRIMARY_IMU_ADDRESS_ONE std::nullopt
-#endif
-
-#ifndef SECONDARY_IMU_ADDRESS_TWO
-#define SECONDARY_IMU_ADDRESS_TWO std::nullopt
-#endif
 
 	void update();
 
