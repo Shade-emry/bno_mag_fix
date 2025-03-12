@@ -28,7 +28,7 @@
 #include <memory>
 #include <optional>
 
-#include "sensoraddresses.h"
+#include "sensoraddresses.h" //move #include "sensoraddresses.h" from SensorManager.cpp to SensorManager.h before #include "EmptySensor.h"
 #include "EmptySensor.h"
 #include "ErroneousSensor.h"
 #include "../globals.h"
