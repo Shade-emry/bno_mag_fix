@@ -141,7 +141,6 @@ protected:
 
     // Protected utility methods
     void initMagneticCalibration();           // Initialize magnetic calibration
-    void updateTemperatureCompensation();      // Handle temperature compensation
     void processGyroData();                    // Process gyroscope readings
     void processMagneticData();                // Process magnetometer readings
     void updateHardIronCompensation();         // Update hard iron compensation
@@ -183,11 +182,6 @@ private:
     float lastGyroHeading = 0.0f;            // Last gyro heading
     unsigned long lastGyroTime = 0;          // Last gyro timestamp
     bool usingGyroHeading = false;           // Gyro backup state
-
-    // Temperature compensation
-    float lastTemp = 25.0f;                  // Last temperature
-    bool tempCalibrated = false;             // Calibration state
-    static constexpr float TEMP_COEFF = -0.1f;  // Temperature coefficient
 
     // Position memory
     bool hasInitialPosition = false;

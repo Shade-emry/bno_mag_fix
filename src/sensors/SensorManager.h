@@ -23,6 +23,7 @@
 #ifndef SLIMEVR_SENSORMANAGER
 #define SLIMEVR_SENSORMANAGER
 
+// Only define default values if not already defined elsewhere
 #ifndef PRIMARY_IMU_ADDRESS_ONE
 #define PRIMARY_IMU_ADDRESS_ONE std::nullopt
 #endif

@@ -26,6 +26,47 @@
 #include "GlobalVars.h"
 #include "utils.h"
 #include "SparkFun_BNO08x_Arduino_Library.h"
+#include <math.h>  // For PI, TWO_PI and other math functions
+
+// Need to define fixed-point math macros if not defined elsewhere
+#ifndef F_TO_FX
+#define F_TO_FX(f) ((int32_t)((f) * 256.0f))
+#endif
+
+#ifndef FX_TO_F
+#define FX_TO_F(fx) ((float)(fx) / 256.0f)
+#endif
+
+#ifndef FX_MUL
+#define FX_MUL(a, b) (((a) * (b)) >> 8)
+#endif
+
+#ifndef FX_DIV
+#define FX_DIV(a, b) (((a) << 8) / (b))
+#endif
+
+// Missing MFX struct definitions if not defined elsewhere
+#ifndef MFX_NUM_AXES
+#define MFX_NUM_AXES 3
+
+typedef struct {
+    int32_t mag[MFX_NUM_AXES];
+    uint32_t timestamp;
+} MFX_MagCal_input_t;
+
+typedef struct {
+    int32_t hi_bias[MFX_NUM_AXES];
+    uint8_t quality;
+    uint16_t sample_count;
+} MFX_MagCal_output_t;
+
+// Magnetometer calibration quality values
+#define MFX_MAGCAL_UNKNOWN 0
+#define MFX_MAGCAL_POOR 1
+#define MFX_MAGCAL_OK 2
+#define MFX_MAGCAL_GOOD 3
+#endif
+
 /*
  * Calculates the Euclidean norm (magnitude) of a vector
  * - Uses fixed-point multiplication for accuracy
@@ -203,6 +244,9 @@ void BNO080Sensor::motionSetup() {
 	configured = true;
 	m_tpsCounter.reset();
 	m_dataCounter.reset();
+
+    // Temperature sensor not available in BNO08x API this needs to call from "Get Feature Request" ( at 0xFE ) Planned implementation
+    // imu.enableTemperature(100); // 100ms interval (10Hz)
 }
 
 /*
@@ -276,35 +320,6 @@ void BNO080Sensor::motionLoop() {
                 magneticAccuracyEstimate = radianAccuracy;
             }
             
-            // Monitor magnetometer calibration status
-            uint8_t newAccuracy = imu.getMagAccuracy();
-            if(newAccuracy != magCalibrationAccuracy) {
-                magCalibrationAccuracy = newAccuracy;
-                const char* statusText;
-                switch(magCalibrationAccuracy) {
-                    case 0:
-                        statusText = "Uncalibrated";
-                        break;
-                    case 1:
-                        statusText = "Minimal Calibration";
-                        break;
-                    case 2:
-                        statusText = "More Calibrated";
-                        break;
-                    case 3:
-                        statusText = "Fully Calibrated";
-                        break;
-                    default:
-                        statusText = "Unknown";
-                }
-                m_Logger.info("Magnetometer Calibration Status: %s (Level %d/3)", statusText, magCalibrationAccuracy);
-                
-                if(magCalibrationAccuracy == 3) {
-                    // Save calibration data when fully calibrated
-                    updateHardIronCompensation();
-                }
-            }
-            
             networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
             
         } else {
@@ -349,14 +364,11 @@ void BNO080Sensor::motionLoop() {
 
 /*
  * Returns current sensor operational status
- * - SENSOR_ERROR: If reset occurred
  * - SENSOR_OK: If working normally
  * - SENSOR_OFFLINE: If not working
  */
 SensorStatus BNO080Sensor::getSensorState() {
-    return lastReset > 0 ? SensorStatus::SENSOR_ERROR
-         : isWorking()   ? SensorStatus::SENSOR_OK
-                         : SensorStatus::SENSOR_OFFLINE;
+    return isWorking() ? SensorStatus::SENSOR_OK : SensorStatus::SENSOR_OFFLINE;
 }
 
 /*
@@ -460,9 +472,6 @@ void BNO080Sensor::initMagneticCalibration() {
     if (isMagEnabled()) {
         // Request current calibration status
         imu.requestCalibrationStatus();
-        
-        // Enable magnetic field reports
-        imu.enableMagnetometer(50);  // 50Hz for better initial calibration
         
         // Initialize calibration structures
         memset(&m_MagCalInput, 0, sizeof(m_MagCalInput));
@@ -689,15 +698,15 @@ void BNO080Sensor::processMagneticData() {
  * - Manages sample collection
  */
 void BNO080Sensor::updateHardIronCompensation() {
-    /*
     static const uint16_t SAMPLES_FOR_CALIBRATION = 25; // Reduced samples for faster response
     static const int32_t LEARNING_RATE = F_TO_FX(0.05); // Increased to 5% learning rate
     
     // Only update when device is stable (low gyro readings)
-    if (abs(imu.getGyroX()) < 1.0f && 
-        abs(imu.getGyroY()) < 1.0f && 
-        abs(imu.getGyroZ()) < 1.0f) {
-        
+    float x, y, z;
+    uint8_t gyroAccuracy;
+    imu.getGyro(x, y, z, gyroAccuracy);
+    
+    if (abs(x) < 1.0f && abs(y) < 1.0f && abs(z) < 1.0f) {
         m_MagCalOutput.sample_count++;
         
         if (m_MagCalOutput.sample_count >= SAMPLES_FOR_CALIBRATION) {
@@ -715,7 +724,6 @@ void BNO080Sensor::updateHardIronCompensation() {
             }
         }
     }
-    */
 }
 
 /*
@@ -733,17 +741,17 @@ void BNO080Sensor::processGyroData() {
     if(usingGyroHeading) {
         // Get raw gyro data
         float x, y, z;
-        uint8_t gyroAccuracy;  // Create a variable to pass by reference
+        uint8_t gyroAccuracy;
         imu.getGyro(x, y, z, gyroAccuracy);
         float gyroZ = z;
-        // Apply temperature compensation (typical coefficient of 0.1%)
         
-        // Apply temperature compensation to gyro
-        float temp = imu.getRawGyroX() * 0.01f;  // Temperature from gyro data
-        float tempDiff = temp - 25.0f;  // Deviation from room temperature
+        // BNO08x doesn't have direct temperature access
+        // Use constant temperature assumption instead
+        const float assumedTemp = 25.0f;  // Assume room temperature
+        float tempDiff = assumedTemp - 25.0f;  // Usually zero
         gyroZ *= (1.0f + TEMP_COEFF * tempDiff);  // Apply temperature correction
         
-        // Update heading with temperature-compensated gyro
+        // Update heading with gyro data
         lastGyroHeading += gyroZ * deltaTime;
         
         // Normalize to -PI to PI
@@ -772,24 +780,31 @@ void BNO080Sensor::processGyroData() {
  * - Adjusts sensor readings based on temperature
  */
 void BNO080Sensor::updateTemperatureCompensation() {
-    // Get temperature from gyro data packet
-    float currentTemp = imu.getRawGyroX() * 0.01f;
-    float tempDiff = currentTemp - lastTemp;
+    // BNO08x doesn't have direct temperature sensor access
+    // Pending SH2 Implementation using mag reports to get temp data
+    // Skip temperature compensation or use alternative approach
     
-    // Exponential moving average for temperature
-    static const float TEMP_ALPHA = 0.1f;  // Slower temperature updates
-    if(abs(tempDiff) > 0.5f) {  // Only update on significant changes
-        lastTemp = lastTemp * (1.0f - TEMP_ALPHA) + currentTemp * TEMP_ALPHA;
-        
-        // Apply temperature compensation with dynamic coefficient
-        float tempCoeff = TEMP_COEFF;
-        if(abs(tempDiff) > 5.0f) {
-            // Reduce compensation for large temperature changes
-            tempCoeff *= 0.5f;
-        }
-        
+    // If temperature compensation is critical, could use:
+    // 1. External temperature sensor
+    // 2. ESP's internal temperature sensor
+    // 3. A constant value (which effectively disables dynamic compensation)
+    
+    const float assumedTemp = 25.0f;  // Assume room temperature
+    
+    if(lastTemp == 0) {
+        // Initialize on first run
+        lastTemp = assumedTemp;
+    }
+    
+    // Temperature difference would typically be zero with constant temperature
+    float tempDiff = assumedTemp - lastTemp;
+    lastTemp = assumedTemp;
+    
+    // Only apply minimal compensation if needed
+    if(abs(tempDiff) > 0.5f) {
         for(int i = 0; i < 3; i++) {
-            m_MagCalInput.mag[i] = m_MagCalInput.mag[i] * (1.0f + tempCoeff * tempDiff);
+            // Apply minimal temperature adjustment
+            m_MagCalInput.mag[i] = m_MagCalInput.mag[i] * (1.0f + TEMP_COEFF * tempDiff);
         }
     }
 }

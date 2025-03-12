@@ -84,6 +84,8 @@ void SensorManager::setup() {
 		return directPinInterfaces[pin];
 	};
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 	auto mcpPin = [&](int pin) {
 		if (!mcpPinInterfaces.contains(pin)) {
 			auto ptr = new MCP23X17PinInterface(&m_MCP, pin);
@@ -91,6 +93,7 @@ void SensorManager::setup() {
 		}
 		return mcpPinInterfaces[pin];
 	};
+#pragma GCC diagnostic pop
 
 	auto directWire = [&](int scl, int sda) {
 		auto pair = std::make_tuple(scl, sda);
@@ -101,6 +104,8 @@ void SensorManager::setup() {
 		return i2cWireInterfaces[pair];
 	};
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 	auto pcaWire = [&](int scl, int sda, int addr, int ch) {
 		auto pair = std::make_tuple(scl, sda, addr, ch);
 		if (!pcaWireInterfaces.contains(pair)) {
@@ -109,6 +114,8 @@ void SensorManager::setup() {
 		}
 		return pcaWireInterfaces[pair];
 	};
+#pragma GCC diagnostic pop
+
 	uint8_t sensorID = 0;
 	uint8_t activeSensorCount = 0;
 	if (m_MCP.begin_I2C()) {
