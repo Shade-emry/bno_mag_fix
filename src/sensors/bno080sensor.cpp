@@ -25,7 +25,7 @@
 
 #include "GlobalVars.h"
 #include "utils.h"
-
+#include "SparkFun_BNO08x_Arduino_Library.h"
 /*
  * Calculates the Euclidean norm (magnitude) of a vector
  * - Uses fixed-point multiplication for accuracy
@@ -83,13 +83,13 @@ void BNO080Sensor::motionSetup() {
 	// Always enable magnetometer for BNO085
 	if (sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086) {
 		magStatus = MagnetometerStatus::MAG_ENABLED;
-		m_Config.magEnabled = true;
+		magEnabled = true;
 	} else {
 		// For other sensors, use config or default
 		switch (sensorConfig.type) {
 			case SlimeVR::Configuration::SensorConfigType::BNO0XX:
-				m_Config = sensorConfig.data.bno0XX;
-				magStatus = m_Config.magEnabled ? MagnetometerStatus::MAG_ENABLED
+				magEnabled = sensorConfig.data.bno0XX.magEnabled;
+				magStatus = magEnabled ? MagnetometerStatus::MAG_ENABLED
 											: MagnetometerStatus::MAG_DISABLED;
 				break;
 			default:
@@ -166,7 +166,7 @@ void BNO080Sensor::motionSetup() {
 		globalTimer.in(
 			60000,
 			[](void* sensor) {
-				((BNO080*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
+				((BNO08x*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
 				return true;
 			},
 			&imu
@@ -177,7 +177,7 @@ void BNO080Sensor::motionSetup() {
 		globalTimer.in(
 			60000,
 			[](void* sensor) {
-				((BNO080*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
+				((BNO08x*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
 				return true;
 			},
 			&imu
@@ -186,7 +186,7 @@ void BNO080Sensor::motionSetup() {
 		globalTimer.in(
 			60000,
 			[](void* sensor) {
-				((BNO080*)sensor)->requestCalibrationStatus();
+				((BNO08x*)sensor)->requestCalibrationStatus();
 				return true;
 			},
 			&imu
@@ -267,9 +267,13 @@ void BNO080Sensor::motionLoop() {
             
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
                 && BNO_USE_ARVR_STABILIZATION) {
-                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+                float radianAccuracy = 0.0f;
+                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, radianAccuracy, calibrationAccuracy);
+                magneticAccuracyEstimate = radianAccuracy;
             } else {
-                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+                float radianAccuracy = 0.0f;
+                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, radianAccuracy, calibrationAccuracy);
+                magneticAccuracyEstimate = radianAccuracy;
             }
             
             // Monitor magnetometer calibration status
@@ -378,7 +382,7 @@ void BNO080Sensor::sendData() {
 
     networkConnection.sendSensorAcceleration(sensorId, acceleration);
 
-    m_fusion.clearUpdated();
+    m_fusion.setUpdated(false);
 }
 
 /*
@@ -389,13 +393,13 @@ void BNO080Sensor::sendData() {
  */
 void BNO080Sensor::setFlag(uint16_t flagId, bool state) {
     if (flagId == FLAG_SENSOR_BNO0XX_MAG_ENABLED) {
-        m_Config.magEnabled = state;
+        magEnabled = state;
         magStatus = state ? MagnetometerStatus::MAG_ENABLED
                           : MagnetometerStatus::MAG_DISABLED;
 
         SlimeVR::Configuration::SensorConfig config;
         config.type = SlimeVR::Configuration::SensorConfigType::BNO0XX;
-        config.data.bno0XX = m_Config;
+        config.data.bno0XX.magEnabled = magEnabled;
         configuration.setSensor(sensorId, config);
 
         // Reinitialize the sensor
@@ -654,6 +658,28 @@ void BNO080Sensor::processMagneticData() {
 
     updateHardIronCompensation();
     processGyroData();
+    
+    // After applying corrections, check if we've returned to initial position
+    if (!hasInitialPosition && m_MagCalOutput.quality >= MFX_MAGCAL_GOOD) {
+        // Store initial position when we have good calibration
+        memcpy(initialPosition, m_MagCalInput.mag, sizeof(initialPosition));
+        hasInitialPosition = true;
+    } else if (inDisturbance && hasInitialPosition) {
+        // Calculate similarity to initial position
+        int32_t simScore = 0;
+        for (int i = 0; i < 3; i++) {
+            int32_t diff = abs(avgMag[i] - initialPosition[i]);
+            simScore += diff;
+        }
+        
+        // If very similar to initial position, exit disturbance mode faster
+        if (simScore < F_TO_FX(0.5)) {
+            m_Logger.info("Detected return to initial position - exiting disturbance mode");
+            inDisturbance = false;
+            usingGyroHeading = false;
+            m_MagCalOutput.quality = MFX_MAGCAL_GOOD;
+        }
+    }
 }
 
 /*
@@ -706,7 +732,11 @@ void BNO080Sensor::processGyroData() {
     
     if(usingGyroHeading) {
         // Get raw gyro data
-        float gyroZ = imu.getGyroZ();
+        float x, y, z;
+        uint8_t gyroAccuracy;  // Create a variable to pass by reference
+        imu.getGyro(x, y, z, gyroAccuracy);
+        float gyroZ = z;
+        // Apply temperature compensation (typical coefficient of 0.1%)
         
         // Apply temperature compensation to gyro
         float temp = imu.getRawGyroX() * 0.01f;  // Temperature from gyro data

@@ -188,6 +188,10 @@ private:
     float lastTemp = 25.0f;                  // Last temperature
     bool tempCalibrated = false;             // Calibration state
     static constexpr float TEMP_COEFF = -0.1f;  // Temperature coefficient
+
+    // Position memory
+    bool hasInitialPosition = false;
+    int32_t initialPosition[3] = {0, 0, 0};
 };
 
 /**
