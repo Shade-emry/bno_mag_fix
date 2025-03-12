@@ -37,16 +37,6 @@
 #include "sensorinterface/I2CPCAInterface.h"
 #include "sensorinterface/I2CWireSensorInterface.h"
 #include "sensorinterface/MCP23X17PinInterface.h"
-// Only define default values if not already defined elsewhere
-#ifndef PRIMARY_IMU_ADDRESS_ONE
-#define PRIMARY_IMU_ADDRESS_ONE std::nullopt
-#endif
-
-#ifndef SECONDARY_IMU_ADDRESS_TWO
-#define SECONDARY_IMU_ADDRESS_TWO std::nullopt
-#endif
-
-
 
 namespace SlimeVR {
 namespace Sensors {
