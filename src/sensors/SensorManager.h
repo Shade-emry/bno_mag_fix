@@ -23,15 +23,6 @@
 #ifndef SLIMEVR_SENSORMANAGER
 #define SLIMEVR_SENSORMANAGER
 
-// Only define default values if not already defined elsewhere
-#ifndef PRIMARY_IMU_ADDRESS_ONE
-#define PRIMARY_IMU_ADDRESS_ONE std::nullopt
-#endif
-
-#ifndef SECONDARY_IMU_ADDRESS_TWO
-#define SECONDARY_IMU_ADDRESS_TWO std::nullopt
-#endif
-
 #include <i2cscan.h>
 
 #include <memory>
@@ -55,6 +46,15 @@ public:
 		: m_Logger(SlimeVR::Logging::Logger("SensorManager")) {}
 	void setup();
 	void postSetup();
+
+// Only define default values if not already defined elsewhere
+#ifndef PRIMARY_IMU_ADDRESS_ONE
+#define PRIMARY_IMU_ADDRESS_ONE std::nullopt
+#endif
+
+#ifndef SECONDARY_IMU_ADDRESS_TWO
+#define SECONDARY_IMU_ADDRESS_TWO std::nullopt
+#endif
 
 	void update();
 
