@@ -1,7 +1,7 @@
 #pragma once
 
 #include "sensors/sensor.h"
-#include "configuration/configuration.h"
+#include "configuration/Configuration.h"
 #include "SparkFun_BNO08x_Arduino_Library.h"
 
 // Fixed point math definitions
