@@ -27,3 +27,5 @@ int DirectPinInterface::digitalRead() { return ::digitalRead(_pinNum); }
 void DirectPinInterface::pinMode(uint8_t mode) { ::pinMode(_pinNum, mode); }
 
 void DirectPinInterface::digitalWrite(uint8_t val) { ::digitalWrite(_pinNum, val); }
+
+int8_t DirectPinInterface::getPinNum() { return (int8_t)_pinNum; }

@@ -38,7 +38,7 @@ public:
 	int digitalRead() override final;
 	void pinMode(uint8_t mode) override final;
 	void digitalWrite(uint8_t val) override final;
-
+	int8_t getPinNum() override final;
 private:
 	uint8_t _pinNum;
 };

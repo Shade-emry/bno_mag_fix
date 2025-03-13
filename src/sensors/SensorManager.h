@@ -28,6 +28,7 @@
 #include <memory>
 #include <optional>
 
+#include "sensoraddresses.h"
 #include "EmptySensor.h"
 #include "ErroneousSensor.h"
 #include "../globals.h"
