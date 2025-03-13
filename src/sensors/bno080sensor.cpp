@@ -92,7 +92,7 @@ void BNO080Sensor::motionSetup() {
 #ifdef DEBUG_SENSOR
 	imu.enableDebugging(Serial);
 #endif
-	if (!imu.begin(addr, Wire, m_IntPin)) {
+    if (!imu.begin(addr, Wire, m_IntPin->getPinNum())) {
 		m_Logger.fatal(
 			"Can't connect to %s at address 0x%02x",
 			getIMUNameByType(sensorType),
@@ -101,7 +101,7 @@ void BNO080Sensor::motionSetup() {
 		ledManager.pattern(50, 50, 200);
 		return;
 	}
-
+/*
 	m_Logger.info(
 		"Connected to %s on 0x%02x. "
 		"Info: SW Version Major: 0x%02x "
@@ -117,7 +117,7 @@ void BNO080Sensor::motionSetup() {
 		imu.swBuildNumber,
 		imu.swVersionPatch
 	);
-
+*/
 	SlimeVR::Configuration::SensorConfig sensorConfig
 		= configuration.getSensor(sensorId);
 	
@@ -157,13 +157,13 @@ void BNO080Sensor::motionSetup() {
 		}
 		
 		// Request initial calibration status
-		imu.requestCalibrationStatus();
+//		imu.requestCalibrationStatus(); //does not exist in BNO08x API
 		
 		// Enable periodic calibration saves
-		imu.saveCalibrationPeriodically(true);
+//		imu.saveCalibrationPeriodically(true); //does not exist in BNO08x API
 		
 		// Send calibration command specifically for magnetometer
-		imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
+//		imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD); //does not exist in BNO08x API
 		
 		// Start initial calibration
 		m_Logger.info("=== Initial Magnetometer Calibration ===");
@@ -197,8 +197,8 @@ void BNO080Sensor::motionSetup() {
 #endif
 	// Calibration settings:
 	// EXPERIMENTAL Enable periodic calibration save to permanent memory
-	imu.saveCalibrationPeriodically(true);
-	imu.requestCalibrationStatus();
+//	imu.saveCalibrationPeriodically(true); //does not exist in BNO08x API
+//	imu.requestCalibrationStatus(); //does not exist in BNO08x API
 	// EXPERIMENTAL Disable accelerometer calibration after 1 minute to prevent
 	// "stomping" bug WARNING : Executing IMU commands outside of the update loop is not
 	// allowed since the address might have changed when the timer is executed!
@@ -207,7 +207,7 @@ void BNO080Sensor::motionSetup() {
 		globalTimer.in(
 			60000,
 			[](void* sensor) {
-				((BNO08x*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
+//				((BNO08x*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE); //does not exist in BNO08x API
 				return true;
 			},
 			&imu
@@ -218,7 +218,7 @@ void BNO080Sensor::motionSetup() {
 		globalTimer.in(
 			60000,
 			[](void* sensor) {
-				((BNO08x*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
+//				((BNO08x*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE); //does not exist in BNO08x API
 				return true;
 			},
 			&imu
@@ -227,7 +227,7 @@ void BNO080Sensor::motionSetup() {
 		globalTimer.in(
 			60000,
 			[](void* sensor) {
-				((BNO08x*)sensor)->requestCalibrationStatus();
+//				((BNO08x*)sensor)->requestCalibrationStatus(); //does not exist in BNO08x API
 				return true;
 			},
 			&imu
@@ -258,7 +258,8 @@ void BNO080Sensor::motionSetup() {
  * - Updates calibration status
  */
 void BNO080Sensor::motionLoop() {
-    if (imu.dataAvailable()) {
+//    if (imu.dataAvailable()) { //does not exist in BNO08x API
+    if (true) {
         lastData = millis();
         
         Quat nRotation;  // Local quaternion variable
@@ -305,7 +306,7 @@ void BNO080Sensor::motionLoop() {
                 
                 // If accuracy drops below 2, start recalibration
                 if (magCalibrationAccuracy < 2) {
-                    imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
+//                    imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD); //does not exist in BNO08x API
                 }
             }
             
@@ -325,9 +326,9 @@ void BNO080Sensor::motionLoop() {
         } else {
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
                 && BNO_USE_ARVR_STABILIZATION) {
-                imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
+//                imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy); //does not exist in BNO08x API
             } else {
-                imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
+//                imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy); //does not exist in BNO08x API
             }
             
             networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
@@ -452,10 +453,10 @@ void BNO080Sensor::startCalibration(int calibrationType) {
         imu.enableMagnetometer(50);  // 50Hz updates
         
         // Force recalibration
-        imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
+//        imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD); //does not exist in BNO08x API
         
         // Request calibration status
-        imu.requestCalibrationStatus();
+//        imu.requestCalibrationStatus(); //does not exist in BNO08x API
         
         // Small delay to let the commands process
         delay(50);
@@ -471,7 +472,7 @@ void BNO080Sensor::startCalibration(int calibrationType) {
 void BNO080Sensor::initMagneticCalibration() {
     if (isMagEnabled()) {
         // Request current calibration status
-        imu.requestCalibrationStatus();
+//        imu.requestCalibrationStatus(); //does not exist in BNO08x API
         
         // Initialize calibration structures
         memset(&m_MagCalInput, 0, sizeof(m_MagCalInput));
@@ -479,7 +480,7 @@ void BNO080Sensor::initMagneticCalibration() {
         m_MagCalOutput.quality = MFX_MAGCAL_UNKNOWN;
         
         // Start calibration
-        imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
+//        imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD); //does not exist in BNO08x API
     }
 }
 
