@@ -217,46 +217,121 @@ void BNO080Sensor::motionLoop() {
     if (imu.dataAvailable()) {
         lastData = millis();
         
-        Quat nRotation;  // Local quaternion variable
+        // Get raw magnetometer data if enabled
+        float magX = 0.0f, magY = 0.0f, magZ = 0.0f;
+        if (isMagEnabled()) {
+            magX = imu.getMagX();
+            magY = imu.getMagY();
+            magZ = imu.getMagZ();
+            
+            // Store in history buffer (convert to fixed-point for existing implementation)
+            magHistory[historyIndex][0] = F_TO_FX(magX);
+            magHistory[historyIndex][1] = F_TO_FX(magY);
+            magHistory[historyIndex][2] = F_TO_FX(magZ);
+            historyIndex = (historyIndex + 1) % HISTORY_SIZE;
+            
+            // Calculate average from history buffer
+            int32_t sumX = 0, sumY = 0, sumZ = 0;
+            for (int i = 0; i < HISTORY_SIZE; i++) {
+                sumX += magHistory[i][0];
+                sumY += magHistory[i][1];
+                sumZ += magHistory[i][2];
+            }
+            avgMag[0] = FX_TO_F(sumX / HISTORY_SIZE);
+            avgMag[1] = FX_TO_F(sumY / HISTORY_SIZE);
+            avgMag[2] = FX_TO_F(sumZ / HISTORY_SIZE);
+            
+            // When we first get good calibration, save reference position
+            uint8_t currentAccuracy = imu.getMagAccuracy();
+            if (!hasInitialPosition && currentAccuracy >= 3) {
+                initialPosition[0] = magX;
+                initialPosition[1] = magY;
+                initialPosition[2] = magZ;
+                hasInitialPosition = true;
+                m_Logger.info("Saved initial magnetic position reference");
+            }
+            
+            // If in disturbance but back near reference position
+            if (inDisturbance && hasInitialPosition) {
+                float positionDifference = 0.0f;
+                for (int i = 0; i < 3; i++) {
+                    float axisDiff = fabsf(avgMag[i] - initialPosition[i]);
+                    positionDifference += axisDiff;
+                }
+                
+                if (positionDifference < 0.002f) {
+                    m_Logger.info("Back to reference position! Resuming normal tracking");
+                    inDisturbance = false;
+                    usingGyroHeading = false;
+                }
+            }
+            
+            // Detect sudden magnetic changes (additional check)
+            float instantChange = sqrtf(
+                powf(magX - avgMag[0], 2) +
+                powf(magY - avgMag[1], 2) +
+                powf(magZ - avgMag[2], 2)
+            );
+            
+            if (instantChange > 0.5f && !inDisturbance) {
+                inDisturbance = true;
+                usingGyroHeading = true;
+                m_Logger.warn("Magnetic disturbance detected! Using gyro for heading");
+            }
+        }
+        
+        // Continue with quaternion processing
+        Quat nRotation;
         
         if (isMagEnabled()) {
+            // If we're using gyro heading due to magnetic disturbance
+            if (usingGyroHeading) {
+                // Get game rotation (no mag)
+                imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
+                
+                // TODO: Use gyro to stabilize heading here if needed
+                // This would involve calculating heading delta from gyro and applying to the quaternion
+                
+                networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
+            } else {
+                // Normal operation with magnetometer
+                if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
+                    && BNO_USE_ARVR_STABILIZATION) {
+                    imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+                } else {
+                    imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+                }
+                
+                networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
+            }
+            
+            // Periodic magnetometer status checks (existing code)
             static uint32_t lastMagStatusCheck = 0;
             uint32_t currentTime = millis();
             
-            // Check mag status every 5 seconds
             if (currentTime - lastMagStatusCheck >= 5000) {
                 lastMagStatusCheck = currentTime;
                 uint8_t newAccuracy = imu.getMagAccuracy();
-                const char* statusText;
-                switch(newAccuracy) {
-                    case 0:
-                        statusText = "Uncalibrated";
-                        break;
-                    case 1:
-                        statusText = "Minimal Calibration";
-                        break;
-                    case 2:
-                        statusText = "More Calibrated";
-                        break;
-                    case 3:
-                        statusText = "Fully Calibrated";
-                        // Save calibration when we reach full calibration
-                        if (newAccuracy > magCalibrationAccuracy) {
-                            m_Logger.info("Reached full calibration - saving calibration data");
-                            imu.saveCalibration();
-                            delay(100); // Give it time to save
-                        }
-                        break;
-                    default:
-                        statusText = "Unknown";
-                }
                 
                 // Only log if accuracy changed
                 if (newAccuracy != magCalibrationAccuracy) {
                     magCalibrationAccuracy = newAccuracy;
-                    m_Logger.info("Magnetometer Calibration Status: %s (Level %d/3)", statusText, magCalibrationAccuracy);
-                } else {
-                    m_Logger.info("Magnetometer Status Check - Current Status: %s (Level %d/3)", statusText, magCalibrationAccuracy);
+                    const char* statusText;
+                    switch(magCalibrationAccuracy) {
+                        case 0: statusText = "Uncalibrated"; break;
+                        case 1: statusText = "Minimal Calibration"; break;
+                        case 2: statusText = "More Calibrated"; break;
+                        case 3: 
+                            statusText = "Fully Calibrated";
+                            // Save calibration when we reach full calibration
+                            imu.saveCalibration();
+                            delay(100); // Give it time to save
+                            break;
+                        default: statusText = "Unknown";
+                    }
+                    
+                    m_Logger.info("Magnetometer Calibration Status: %s (Level %d/3)", 
+                                 statusText, magCalibrationAccuracy);
                 }
                 
                 // If accuracy drops below 2, start recalibration
@@ -264,46 +339,8 @@ void BNO080Sensor::motionLoop() {
                     imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
                 }
             }
-            
-            if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
-                && BNO_USE_ARVR_STABILIZATION) {
-                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
-            } else {
-                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
-            }
-            
-            // Monitor magnetometer calibration status
-            uint8_t newAccuracy = imu.getMagAccuracy();
-            if(newAccuracy != magCalibrationAccuracy) {
-                magCalibrationAccuracy = newAccuracy;
-                const char* statusText;
-                switch(magCalibrationAccuracy) {
-                    case 0:
-                        statusText = "Uncalibrated";
-                        break;
-                    case 1:
-                        statusText = "Minimal Calibration";
-                        break;
-                    case 2:
-                        statusText = "More Calibrated";
-                        break;
-                    case 3:
-                        statusText = "Fully Calibrated";
-                        break;
-                    default:
-                        statusText = "Unknown";
-                }
-                m_Logger.info("Magnetometer Calibration Status: %s (Level %d/3)", statusText, magCalibrationAccuracy);
-                
-                if(magCalibrationAccuracy == 3) {
-                    // Save calibration data when fully calibrated
-                    updateHardIronCompensation();
-                }
-            }
-            
-            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
-            
         } else {
+            // No magnetometer enabled - use game rotation vector
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
                 && BNO_USE_ARVR_STABILIZATION) {
                 imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
