@@ -188,11 +188,6 @@ private:
     float lastTemp = 25.0f;                  // Last temperature
     bool tempCalibrated = false;             // Calibration state
     static constexpr float TEMP_COEFF = -0.1f;  // Temperature coefficient
-
-    // Position reference for magnetic disturbance recovery
-    float initialPosition[3] = {0, 0, 0};     // Reference magnetic field when calibrated
-    bool hasInitialPosition = false;         // Whether we have saved a reference position
-    float avgMag[3] = {0, 0, 0};            // Average of recent measurements
 };
 
 /**
