@@ -49,164 +49,160 @@ int32_t norm(const int32_t* vector, int size) {
  */
 void BNO080Sensor::motionSetup() {
 #ifdef DEBUG_SENSOR
-    imu.enableDebugging(Serial);
+	imu.enableDebugging(Serial);
 #endif
-    if (!imu.begin(addr, Wire, m_IntPin)) {
-        m_Logger.fatal(
-            "Can't connect to %s at address 0x%02x",
-            getIMUNameByType(sensorType),
-            addr
-        );
-        ledManager.pattern(50, 50, 200);
-        return;
-    }
+	if (!imu.begin(addr, Wire, m_IntPin)) {
+		m_Logger.fatal(
+			"Can't connect to %s at address 0x%02x",
+			getIMUNameByType(sensorType),
+			addr
+		);
+		ledManager.pattern(50, 50, 200);
+		return;
+	}
 
-    m_Logger.info(
-        "Connected to %s on 0x%02x. "
-        "Info: SW Version Major: 0x%02x "
-        "SW Version Minor: 0x%02x "
-        "SW Part Number: 0x%02x "
-        "SW Build Number: 0x%02x "
-        "SW Version Patch: 0x%02x",
-        getIMUNameByType(sensorType),
-        addr,
-        imu.swMajor,
-        imu.swMinor,
-        imu.swPartNumber,
-        imu.swBuildNumber,
-        imu.swVersionPatch
-    );
+	m_Logger.info(
+		"Connected to %s on 0x%02x. "
+		"Info: SW Version Major: 0x%02x "
+		"SW Version Minor: 0x%02x "
+		"SW Part Number: 0x%02x "
+		"SW Build Number: 0x%02x "
+		"SW Version Patch: 0x%02x",
+		getIMUNameByType(sensorType),
+		addr,
+		imu.swMajor,
+		imu.swMinor,
+		imu.swPartNumber,
+		imu.swBuildNumber,
+		imu.swVersionPatch
+	);
 
-    SlimeVR::Configuration::SensorConfig sensorConfig
-        = configuration.getSensor(sensorId);
-    
-    // Always enable magnetometer for BNO085
-    if (sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086) {
-        magStatus = MagnetometerStatus::MAG_ENABLED;
-        m_Config.magEnabled = true;
-    } else {
-        // For other sensors, use config or default
-        switch (sensorConfig.type) {
-            case SlimeVR::Configuration::SensorConfigType::BNO0XX:
-                m_Config = sensorConfig.data.bno0XX;
-                magStatus = m_Config.magEnabled ? MagnetometerStatus::MAG_ENABLED
-                                            : MagnetometerStatus::MAG_DISABLED;
-                break;
-            default:
-                magStatus = USE_6_AXIS ? MagnetometerStatus::MAG_DISABLED
-                                    : MagnetometerStatus::MAG_ENABLED;
-                break;
-        }
-    }
+	SlimeVR::Configuration::SensorConfig sensorConfig
+		= configuration.getSensor(sensorId);
+	
+	// Always enable magnetometer for BNO085
+	if (sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086) {
+		magStatus = MagnetometerStatus::MAG_ENABLED;
+		m_Config.magEnabled = true;
+	} else {
+		// For other sensors, use config or default
+		switch (sensorConfig.type) {
+			case SlimeVR::Configuration::SensorConfigType::BNO0XX:
+				m_Config = sensorConfig.data.bno0XX;
+				magStatus = m_Config.magEnabled ? MagnetometerStatus::MAG_ENABLED
+											: MagnetometerStatus::MAG_DISABLED;
+				break;
+			default:
+				magStatus = USE_6_AXIS ? MagnetometerStatus::MAG_DISABLED
+									: MagnetometerStatus::MAG_ENABLED;
+				break;
+		}
+	}
 
-    // Enable magnetometer first
-    if (isMagEnabled()) {
-        // Enable magnetometer at higher rate for better calibration
-        imu.enableMagnetometer(50);  // 50Hz updates
-        
-        // Wait a bit for mag to initialize
-        delay(100);
-        
-        // Configure rotation vector to use magnetometer
-        if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
-            && BNO_USE_ARVR_STABILIZATION) {
-            imu.enableARVRStabilizedRotationVector(10);
-        } else {
-            imu.enableRotationVector(10);
-        }
-        
-        // Request initial calibration status
-        imu.requestCalibrationStatus();
-        
-        // Enable periodic calibration saves
-        imu.saveCalibrationPeriodically(true);
-        
-        // Send calibration command specifically for magnetometer
-        imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
-        
-        // Start initial calibration
-        m_Logger.info("=== Initial Magnetometer Calibration ===");
+	// Enable magnetometer first
+	if (isMagEnabled()) {
+		// Enable magnetometer at higher rate for better calibration
+		imu.enableMagnetometer(50);  // 50Hz updates
+		
+		// Wait a bit for mag to initialize
+		delay(100);
+		
+		// Configure rotation vector to use magnetometer
+		if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
+			&& BNO_USE_ARVR_STABILIZATION) {
+			imu.enableARVRStabilizedRotationVector(10);
+		} else {
+			imu.enableRotationVector(10);
+		}
+		
+		// Request initial calibration status
+		imu.requestCalibrationStatus();
+		
+		// Enable periodic calibration saves
+		imu.saveCalibrationPeriodically(true);
+		
+		// Send calibration command specifically for magnetometer
+		imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
+		
+		// Start initial calibration
+		m_Logger.info("=== Initial Magnetometer Calibration ===");
         m_Logger.info("For best results:");
         m_Logger.info("1. Keep sensor away from magnetic interference");
         m_Logger.info("2. Move sensor in smooth figure-8 patterns");
         m_Logger.info("3. Rotate through all orientations slowly");
         m_Logger.info("4. Watch for calibration level updates");
         m_Logger.info("Calibration will be saved automatically when complete");
-        
-        // Small delay to let settings take effect
-        delay(100);
-    } else {
-        if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
-            && BNO_USE_ARVR_STABILIZATION) {
-            imu.enableARVRStabilizedGameRotationVector(10);
-        } else {
-            imu.enableGameRotationVector(10);
-        }
-    }
+		
+		// Small delay to let settings take effect
+		delay(100);
+	} else {
+		if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
+			&& BNO_USE_ARVR_STABILIZATION) {
+			imu.enableARVRStabilizedGameRotationVector(10);
+		} else {
+			imu.enableGameRotationVector(10);
+		}
+	}
 
-    // Always enable gyroscope for heading stabilization
-    imu.enableGyro(50);  // Enable gyroscope at 50Hz
-    
-    imu.enableLinearAccelerometer(10);
-    initMagneticCalibration();
+	imu.enableLinearAccelerometer(10);
+	initMagneticCalibration();
 
 #if ENABLE_INSPECTION
-    imu.enableRawGyro(10);
-    imu.enableRawAccelerometer(10);
-    if (isMagEnabled()) {
-        imu.enableRawMagnetometer(10);
-    }
+	imu.enableRawGyro(10);
+	imu.enableRawAccelerometer(10);
+	if (isMagEnabled()) {
+		imu.enableRawMagnetometer(10);
+	}
 #endif
+	// Calibration settings:
+	// EXPERIMENTAL Enable periodic calibration save to permanent memory
+	imu.saveCalibrationPeriodically(true);
+	imu.requestCalibrationStatus();
+	// EXPERIMENTAL Disable accelerometer calibration after 1 minute to prevent
+	// "stomping" bug WARNING : Executing IMU commands outside of the update loop is not
+	// allowed since the address might have changed when the timer is executed!
+	if (sensorType == SensorTypeID::BNO085) {
+		// For BNO085, disable accel calibration
+		globalTimer.in(
+			60000,
+			[](void* sensor) {
+				((BNO080*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
+				return true;
+			},
+			&imu
+		);
+	} else if (sensorType == SensorTypeID::BNO086) {
+		// For BNO086, disable accel calibration
+		// TODO: Find default flags for BNO086
+		globalTimer.in(
+			60000,
+			[](void* sensor) {
+				((BNO080*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
+				return true;
+			},
+			&imu
+		);
+	} else {
+		globalTimer.in(
+			60000,
+			[](void* sensor) {
+				((BNO080*)sensor)->requestCalibrationStatus();
+				return true;
+			},
+			&imu
+		);
+	}
+	// imu.sendCalibrateCommand(SH2_CAL_ACCEL | SH2_CAL_GYRO_IN_HAND | SH2_CAL_MAG |
+	// SH2_CAL_ON_TABLE | SH2_CAL_PLANAR);
 
-    // Calibration settings:
-    // EXPERIMENTAL Enable periodic calibration save to permanent memory
-    imu.saveCalibrationPeriodically(true);
-    imu.requestCalibrationStatus();
-    // EXPERIMENTAL Disable accelerometer calibration after 1 minute to prevent
-    // "stomping" bug WARNING : Executing IMU commands outside of the update loop is not
-    // allowed since the address might have changed when the timer is executed!
-    if (sensorType == SensorTypeID::BNO085) {
-        // For BNO085, disable accel calibration
-        globalTimer.in(
-            60000,
-            [](void* sensor) {
-                ((BNO080*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
-                return true;
-            },
-            &imu
-        );
-    } else if (sensorType == SensorTypeID::BNO086) {
-        // For BNO086, disable accel calibration
-        // TODO: Find default flags for BNO086
-        globalTimer.in(
-            60000,
-            [](void* sensor) {
-                ((BNO080*)sensor)->sendCalibrateCommand(SH2_CAL_MAG | SH2_CAL_ON_TABLE);
-                return true;
-            },
-            &imu
-        );
-    } else {
-        globalTimer.in(
-            60000,
-            [](void* sensor) {
-                ((BNO080*)sensor)->requestCalibrationStatus();
-                return true;
-            },
-            &imu
-        );
-    }
-    // imu.sendCalibrateCommand(SH2_CAL_ACCEL | SH2_CAL_GYRO_IN_HAND | SH2_CAL_MAG |
-    // SH2_CAL_ON_TABLE | SH2_CAL_PLANAR);
+	imu.enableStabilityClassifier(500);
 
-    imu.enableStabilityClassifier(500);
-
-    lastReset = 0;
-    lastData = millis();
-    working = true;
-    configured = true;
-    m_tpsCounter.reset();
-    m_dataCounter.reset();
+	lastReset = 0;
+	lastData = millis();
+	working = true;
+	configured = true;
+	m_tpsCounter.reset();
+	m_dataCounter.reset();
 }
 
 /*
@@ -221,133 +217,46 @@ void BNO080Sensor::motionLoop() {
     if (imu.dataAvailable()) {
         lastData = millis();
         
-        // Get raw magnetometer data if enabled
-        float magX = 0.0f, magY = 0.0f, magZ = 0.0f;
-        if (isMagEnabled()) {
-            magX = imu.getMagX();
-            magY = imu.getMagY();
-            magZ = imu.getMagZ();
-            
-            // Store in history buffer (convert to fixed-point for existing implementation)
-            magHistory[historyIndex][0] = F_TO_FX(magX);
-            magHistory[historyIndex][1] = F_TO_FX(magY);
-            magHistory[historyIndex][2] = F_TO_FX(magZ);
-            historyIndex = (historyIndex + 1) % HISTORY_SIZE;
-            
-            // Calculate average from history buffer
-            int32_t sumX = 0, sumY = 0, sumZ = 0;
-            for (int i = 0; i < HISTORY_SIZE; i++) {
-                sumX += magHistory[i][0];
-                sumY += magHistory[i][1];
-                sumZ += magHistory[i][2];
-            }
-            avgMag[0] = FX_TO_F(sumX / HISTORY_SIZE);
-            avgMag[1] = FX_TO_F(sumY / HISTORY_SIZE);
-            avgMag[2] = FX_TO_F(sumZ / HISTORY_SIZE);
-            
-            // When we first get good calibration, save reference position
-            uint8_t currentAccuracy = imu.getMagAccuracy();
-            if (!hasInitialPosition && currentAccuracy >= 3) {
-                initialPosition[0] = magX;
-                initialPosition[1] = magY;
-                initialPosition[2] = magZ;
-                hasInitialPosition = true;
-                m_Logger.info("Saved initial magnetic position reference");
-            }
-            
-            // If in disturbance but back near reference position
-            if (inDisturbance && hasInitialPosition) {
-                float positionDifference = 0.0f;
-                for (int i = 0; i < 3; i++) {
-                    float axisDiff = fabsf(avgMag[i] - initialPosition[i]);
-                    positionDifference += axisDiff;
-                }
-                
-                if (positionDifference < 0.002f) {
-                    m_Logger.info("Back to reference position! Resuming normal tracking");
-                    inDisturbance = false;
-                    usingGyroHeading = false;
-                }
-            }
-            
-            // Detect sudden magnetic changes (additional check)
-            float instantChange = sqrtf(
-                powf(magX - avgMag[0], 2) +
-                powf(magY - avgMag[1], 2) +
-                powf(magZ - avgMag[2], 2)
-            );
-            
-            if (instantChange > 0.5f && !inDisturbance) {
-                inDisturbance = true;
-                usingGyroHeading = true;
-                m_Logger.warn("Magnetic disturbance detected! Using gyro for heading");
-            }
-        }
-        
-        // Continue with quaternion processing
-        Quat nRotation;
+        Quat nRotation;  // Local quaternion variable
         
         if (isMagEnabled()) {
-            // If we're using gyro heading due to magnetic disturbance
-            if (usingGyroHeading) {
-                // Get game rotation (no mag)
-                imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
-                
-                // Verify gyro data is available by trying to read it directly
-                float gyroZ = imu.getGyroZ();
-                if (!isnan(gyroZ)) { // Check if we got a valid gyro reading
-                    // Log first gyro reading when entering gyro heading mode
-                    static bool firstGyroHeadingLog = true;
-                    if (firstGyroHeadingLog) {
-                        m_Logger.info("Initial gyro Z value: %.3f", gyroZ);
-                        firstGyroHeadingLog = false;
-                    }
-                } else {
-                    // If no gyro data available, try to enable it
-                    m_Logger.warn("Gyro data not available, re-enabling gyro");
-                    imu.enableGyro(50);
-                }
-                
-                networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
-            } else {
-                // Normal operation with magnetometer
-                if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
-                    && BNO_USE_ARVR_STABILIZATION) {
-                    imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
-                } else {
-                    imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
-                }
-                
-                networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
-            }
-            
-            // Periodic magnetometer status checks
             static uint32_t lastMagStatusCheck = 0;
             uint32_t currentTime = millis();
             
+            // Check mag status every 5 seconds
             if (currentTime - lastMagStatusCheck >= 5000) {
                 lastMagStatusCheck = currentTime;
                 uint8_t newAccuracy = imu.getMagAccuracy();
+                const char* statusText;
+                switch(newAccuracy) {
+                    case 0:
+                        statusText = "Uncalibrated";
+                        break;
+                    case 1:
+                        statusText = "Minimal Calibration";
+                        break;
+                    case 2:
+                        statusText = "More Calibrated";
+                        break;
+                    case 3:
+                        statusText = "Fully Calibrated";
+                        // Save calibration when we reach full calibration
+                        if (newAccuracy > magCalibrationAccuracy) {
+                            m_Logger.info("Reached full calibration - saving calibration data");
+                            imu.saveCalibration();
+                            delay(100); // Give it time to save
+                        }
+                        break;
+                    default:
+                        statusText = "Unknown";
+                }
                 
                 // Only log if accuracy changed
                 if (newAccuracy != magCalibrationAccuracy) {
                     magCalibrationAccuracy = newAccuracy;
-                    const char* statusText;
-                    switch(magCalibrationAccuracy) {
-                        case 0: statusText = "Uncalibrated"; break;
-                        case 1: statusText = "Minimal Calibration"; break;
-                        case 2: statusText = "More Calibrated"; break;
-                        case 3: 
-                            statusText = "Fully Calibrated";
-                            // Save calibration when we reach full calibration
-                            imu.saveCalibration();
-                            delay(100); // Give it time to save
-                            break;
-                        default: statusText = "Unknown";
-                    }
-                    
-                    m_Logger.info("Magnetometer Calibration Status: %s (Level %d/3)", 
-                                 statusText, magCalibrationAccuracy);
+                    m_Logger.info("Magnetometer Calibration Status: %s (Level %d/3)", statusText, magCalibrationAccuracy);
+                } else {
+                    m_Logger.info("Magnetometer Status Check - Current Status: %s (Level %d/3)", statusText, magCalibrationAccuracy);
                 }
                 
                 // If accuracy drops below 2, start recalibration
@@ -355,8 +264,46 @@ void BNO080Sensor::motionLoop() {
                     imu.sendCalibrateCommand(SENSOR_REPORTID_MAGNETIC_FIELD);
                 }
             }
+            
+            if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
+                && BNO_USE_ARVR_STABILIZATION) {
+                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+            } else {
+                imu.getQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, magneticAccuracyEstimate, calibrationAccuracy);
+            }
+            
+            // Monitor magnetometer calibration status
+            uint8_t newAccuracy = imu.getMagAccuracy();
+            if(newAccuracy != magCalibrationAccuracy) {
+                magCalibrationAccuracy = newAccuracy;
+                const char* statusText;
+                switch(magCalibrationAccuracy) {
+                    case 0:
+                        statusText = "Uncalibrated";
+                        break;
+                    case 1:
+                        statusText = "Minimal Calibration";
+                        break;
+                    case 2:
+                        statusText = "More Calibrated";
+                        break;
+                    case 3:
+                        statusText = "Fully Calibrated";
+                        break;
+                    default:
+                        statusText = "Unknown";
+                }
+                m_Logger.info("Magnetometer Calibration Status: %s (Level %d/3)", statusText, magCalibrationAccuracy);
+                
+                if(magCalibrationAccuracy == 3) {
+                    // Save calibration data when fully calibrated
+                    updateHardIronCompensation();
+                }
+            }
+            
+            networkConnection.sendRotationData(sensorId, &nRotation, DATA_TYPE_NORMAL, calibrationAccuracy);
+            
         } else {
-            // No magnetometer enabled - use game rotation vector
             if ((sensorType == SensorTypeID::BNO085 || sensorType == SensorTypeID::BNO086)
                 && BNO_USE_ARVR_STABILIZATION) {
                 imu.getGameQuat(nRotation.x, nRotation.y, nRotation.z, nRotation.w, calibrationAccuracy);
@@ -418,6 +365,7 @@ void BNO080Sensor::sendData() {
     if (!m_fusion.isUpdated()) {
         return;
     }
+
     Quat quaternion = m_fusion.getQuaternionQuat();
     Vector3 acceleration = m_fusion.getLinearAccVec();
 
@@ -551,7 +499,6 @@ void BNO080Sensor::updateMagneticCalibration(const MFX_MagCal_input_t& magInput)
  */
 void BNO080Sensor::processMagneticData() {
     updateTemperatureCompensation();
-    int32_t avgMag[3] = {0, 0, 0};
 
     // Store current readings in history
     magHistory[historyIndex][0] = m_MagCalInput.mag[0];
@@ -560,9 +507,10 @@ void BNO080Sensor::processMagneticData() {
     historyIndex = (historyIndex + 1) % 6;
 
     // Calculate variance and rate of change
+    int32_t avgMag[3] = {0, 0, 0};
     int32_t variance = 0;
     int32_t maxRateOfChange = 0;
-
+    
     // Calculate average and max rate of change
     for(int i = 0; i < 6; i++) {
         for(int axis = 0; axis < 3; axis++) {
@@ -594,9 +542,11 @@ void BNO080Sensor::processMagneticData() {
     static const int32_t RECOVERY_THRESHOLD = F_TO_FX(0.15);   // Very conservative recovery
     static const int32_t DECAY_RATE = F_TO_FX(0.995);         // Very slow decay
     static const int32_t RECOVERY_RATE = F_TO_FX(0.02);       // Very slow recovery
-
+    
     // Add distance-based threshold scaling
     static const int32_t BASE_MAGNETIC_STRENGTH = F_TO_FX(40.0);  // Expected clean magnetic field strength
+    
+    // Calculate magnetic field strength using fixed point math
     int32_t fieldStrengthSquared = FX_MUL(m_MagCalInput.mag[0], m_MagCalInput.mag[0]) + 
                                   FX_MUL(m_MagCalInput.mag[1], m_MagCalInput.mag[1]) + 
                                   FX_MUL(m_MagCalInput.mag[2], m_MagCalInput.mag[2]);
@@ -633,6 +583,7 @@ void BNO080Sensor::processMagneticData() {
             m_MagCalInput.mag[i] = FX_MUL(lastValidMag[i], blendFactor) + 
                                   FX_MUL(avgMag[i], F_TO_FX(1.0) - blendFactor);
         }
+        
         m_MagCalOutput.quality = MFX_MAGCAL_POOR;
         
     } else if(variance < RECOVERY_THRESHOLD && inDisturbance) {
@@ -665,7 +616,7 @@ void BNO080Sensor::processMagneticData() {
             }
         }
     }
-    
+
     // Apply hard iron bias correction
     int32_t correctedMag[MFX_NUM_AXES];
     for(int i = 0; i < MFX_NUM_AXES; i++) {
@@ -677,6 +628,7 @@ void BNO080Sensor::processMagneticData() {
     for(int i = 0; i < MFX_NUM_AXES; i++) {
         magSquared += FX_MUL(correctedMag[i], correctedMag[i]);
     }
+    
     int32_t magStrength = (int32_t)sqrtf(FX_TO_F(magSquared));
     
     // Enhanced field strength compensation
@@ -699,7 +651,7 @@ void BNO080Sensor::processMagneticData() {
     for(int i = 0; i < MFX_NUM_AXES; i++) {
         m_MagCalInput.mag[i] = correctedMag[i];
     }
-    
+
     updateHardIronCompensation();
     processGyroData();
 }
@@ -711,14 +663,10 @@ void BNO080Sensor::processMagneticData() {
  * - Manages sample collection
  */
 void BNO080Sensor::updateHardIronCompensation() {
-    // These variables will be used in future implementations
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wunused-variable"
+    /*
     static const uint16_t SAMPLES_FOR_CALIBRATION = 25; // Reduced samples for faster response
     static const int32_t LEARNING_RATE = F_TO_FX(0.05); // Increased to 5% learning rate
-    #pragma GCC diagnostic pop
     
-    /*
     // Only update when device is stable (low gyro readings)
     if (abs(imu.getGyroX()) < 1.0f && 
         abs(imu.getGyroY()) < 1.0f && 
@@ -756,52 +704,33 @@ void BNO080Sensor::processGyroData() {
     float deltaTime = (currentTime - lastGyroTime) / 1000.0f;
     lastGyroTime = currentTime;
     
-    // Ensure we have valid gyro data before using it
-    if (!imu.dataAvailable()) {
-        return;
-    }
-    
     if(usingGyroHeading) {
-        // Get raw gyro data and check if it's valid
+        // Get raw gyro data
         float gyroZ = imu.getGyroZ();
         
-        // Only proceed if we got a valid reading (not NaN)
-        if (!isnan(gyroZ)) {
-            // Debug logging for gyro values
-            static uint32_t lastGyroLog = 0;
-            if (millis() - lastGyroLog > 2000) { // Log every 2 seconds
-                m_Logger.debug("Gyro readings - Z: %.3f", gyroZ);
-                lastGyroLog = millis();
-            }
+        // Apply temperature compensation to gyro
+        float temp = imu.getRawGyroX() * 0.01f;  // Temperature from gyro data
+        float tempDiff = temp - 25.0f;  // Deviation from room temperature
+        gyroZ *= (1.0f + TEMP_COEFF * tempDiff);  // Apply temperature correction
+        
+        // Update heading with temperature-compensated gyro
+        lastGyroHeading += gyroZ * deltaTime;
+        
+        // Normalize to -PI to PI
+        while(lastGyroHeading > PI) lastGyroHeading -= TWO_PI;
+        while(lastGyroHeading < -PI) lastGyroHeading += TWO_PI;
+        
+        // If we have valid mag data, do slow correction to prevent drift
+        if(!inDisturbance && m_MagCalOutput.quality >= MFX_MAGCAL_OK) {
+            float magHeading = atan2(m_MagCalInput.mag[1], m_MagCalInput.mag[0]);
+            float headingDiff = magHeading - lastGyroHeading;
             
-            // Apply temperature compensation to gyro
-            float temp = imu.getRawGyroX() * 0.01f;  // Temperature from gyro data
-            float tempDiff = temp - 25.0f;  // Deviation from room temperature
-            gyroZ *= (1.0f + TEMP_COEFF * tempDiff);  // Apply temperature correction
+            // Normalize difference to -PI to PI
+            while(headingDiff > PI) headingDiff -= TWO_PI;
+            while(headingDiff < -PI) headingDiff += TWO_PI;
             
-            // Update heading with temperature-compensated gyro
-            lastGyroHeading += gyroZ * deltaTime;
-            
-            // Normalize to -PI to PI
-            while(lastGyroHeading > PI) lastGyroHeading -= TWO_PI;
-            while(lastGyroHeading < -PI) lastGyroHeading += TWO_PI;
-            
-            // If we have valid mag data, do slow correction to prevent drift
-            if(!inDisturbance && m_MagCalOutput.quality >= MFX_MAGCAL_OK) {
-                float magHeading = atan2(m_MagCalInput.mag[1], m_MagCalInput.mag[0]);
-                float headingDiff = magHeading - lastGyroHeading;
-                
-                // Normalize difference to -PI to PI
-                while(headingDiff > PI) headingDiff -= TWO_PI;
-                while(headingDiff < -PI) headingDiff += TWO_PI;
-                
-                // Very slow correction factor (0.1% per update)
-                lastGyroHeading += headingDiff * 0.001f;
-            }
-        } else {
-            m_Logger.warn("Gyro data not available");
-            // Try to re-enable gyro
-            imu.enableGyro(50);
+            // Very slow correction factor (0.1% per update)
+            lastGyroHeading += headingDiff * 0.001f;
         }
     }
 }
